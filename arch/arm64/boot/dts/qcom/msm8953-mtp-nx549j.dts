@@ -1,0 +1,341 @@
+/*
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+
+#include "msm8953.dtsi"
+#include "pmi8950.dtsi"
+#include "msm8953-pmi8950.dtsi"
+#include "msm8953-mtp.dtsi"
+#include "msm8953-camera-sensor-mtp.dtsi"
+#include "msm8953-mdss-panels-nx549j.dtsi"
+#include "msm8953-pinctrl-nx549j.dtsi"
+
+/* Ramoops region (1 MiB) for pstore crash diagnostics. */
+/{
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ramoops@9ff00000 {
+			compatible = "ramoops";
+			reg = <0x0 0x9ff00000 0x0 0x100000>;
+			record-size    = <0x10000>;
+			console-size   = <0x40000>;
+			ftrace-size    = <0x10000>;
+			pmsg-size      = <0x40000>;
+			no-map;
+		};
+	};
+};
+
+/ {
+	model = "Nubia Z11 mini S (nx549j) MSM8953 MTP";
+	compatible = "qcom,msm8953-mtp", "qcom,msm8953", "qcom,mtp";
+
+	qcom,msm-id = <293 0x0>;
+	qcom,board-id = <8 0>;
+	qcom,pmic-id = <0x010016 0x010011 0x0 0x0>;
+};
+
+/{
+	mtp_batterydata: qcom,battery-data {
+		qcom,batt-id-range-pct = <15>;
+		#include "batterydata-itech-3000mah.dtsi"
+		#include "batterydata-ascent-3450mAh.dtsi"
+	};
+};
+
+&qpnp_fg {
+	qcom,battery-data = <&mtp_batterydata>;
+};
+
+&qpnp_smbcharger {
+	qcom,battery-data = <&mtp_batterydata>;
+	qcom,chg-led-sw-controls;
+	qcom,chg-led-support;
+	qcom,usbin-vadc = <&pmi8950_vadc>;
+};
+
+&pmi_haptic {
+	qcom,lra-auto-res-mode = "qwd";
+	qcom,lra-high-z = "opt1";
+	qcom,lra-res-cal-period = <0>;
+	qcom,wave-play-rate-us = <4165>;
+};
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dsi {
+	hw-config = "single_dsi";
+};
+
+&mdss_dsi0 {
+	pinctrl-names = "mdss_default", "mdss_sleep";
+	pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
+	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
+	qcom,platform-te-gpio = <&tlmm 24 0>;
+	qcom,platform-reset-gpio = <&tlmm 61 0>;
+	qcom,dsi-pref-prim-pan = <&dsi_jdi_s6d1fa4x01_1080p_5p2_cmd
+				  &dsi_boe_otm1906c_1080p_5p2_cmd>;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_nx549j>;
+};
+
+&mdss_dsi1 {
+	status = "disabled";
+};
+
+&labibb {
+	status = "ok";
+	qpnp,qpnp-labibb-mode = "lcd";
+};
+
+/* Synaptics DSX touch on i2c_3: IRQ=65, RST=64, PWR=139, LCD-RST=61. */
+&i2c_3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "ok";
+
+	synaptics_dsx@20 {
+		compatible = "synaptics,dsx-i2c";
+		reg = <0x20>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <65 0x2008>;
+		vdd_ana-supply = <&pm8953_l10>;
+		vcc_i2c-supply = <&pm8953_l22>;
+		synaptics,pwr-reg-name = "vdd_ana";
+		synaptics,bus-reg-name = "vcc_i2c";
+		synaptics,irq-gpio = <&tlmm 65 0x2008>;
+		synaptics,irq-on-state = <0>;
+		synaptics,irq-flags = <0x2008>;
+		synaptics,power-delay-ms = <20>;
+		synaptics,power-gpio = <&tlmm 139 0x0>;
+		synaptics,power-on-state = <1>;
+		synaptics,reset-gpio = <&tlmm 64 0x0>;
+		synaptics,reset-on-state = <0>;
+		synaptics,reset-active-ms = <20>;
+		synaptics,reset-delay-ms = <20>;
+		synaptics,lcd-reset-gpio = <&tlmm 61 0x0>;
+		synaptics,cap-button-codes = <158 139 172>;
+		pinctrl-names = "pmx_ts_int_active", "pmx_ts_int_suspend",
+				"pmx_ts_reset_active", "pmx_ts_reset_suspend";
+		pinctrl-0 = <&synaptics_int_active>;
+		pinctrl-1 = <&synaptics_int_suspend>;
+		pinctrl-2 = <&synaptics_reset_active>;
+		pinctrl-3 = <&synaptics_reset_suspend>;
+	};
+};
+
+/* Broadcom BCM2079x NFC on i2c_5: IRQ=17, EN=16, WAKE=87. */
+&i2c_5 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "ok";
+
+	broadcom_bcm2079x_nfc@77 {
+		compatible = "broadcom,bcm2079x_nfc";
+		reg = <0x77>;
+		broadcom,irq-gpio = <&tlmm 17 0x00>;
+		broadcom,en-gpio = <&tlmm 16 0x00>;
+		broadcom,wake-gpio = <&tlmm 87 0x00>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <17 0>;
+		interrupt-names = "BRCM_NFC_INT";
+		pinctrl-names = "nfc_active", "nfc_suspend";
+		pinctrl-0 = <&bcm2079x_int_active &bcm2079x_en_active &bcm2079x_ctl_active>;
+		pinctrl-1 = <&bcm2079x_int_active &bcm2079x_en_active &bcm2079x_ctl_active>;
+		broadcom,clk-gpio = <&pm8953_gpios 2 0x00>;
+		clocks = <&clock_gcc clk_bb_clk2_pin>;
+		clock-names = "ref_clk";
+	};
+};
+
+/* Light (BH1745) + proximity (PA224) on i2c_2. */
+&i2c_2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "ok";
+
+	rohm_bh1745@38 {
+		compatible = "rohm,bh1745";
+		reg = <0x38>;
+		vdd-supply = <&pm8953_l10>;
+		vio-supply = <&pm8953_l5>;
+	};
+
+	txc_pa224@1e {
+		compatible = "txc,pa224";
+		reg = <0x1e>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <44 0x2>;
+		vdd-supply = <&pm8953_l10>;
+		vio-supply = <&pm8953_l5>;
+		txc,irq-gpio = <&tlmm 44 0x2002>;
+		txc,ps_threshold_low = <30>;
+		txc,ps_threshold_high = <120>;
+		pinctrl-names = "pa224_default", "pa224_sleep";
+		pinctrl-0 = <&pa224_default>;
+		pinctrl-1 = <&pa224_sleep>;
+		txc,vdd-always-on = <1>;
+	};
+};
+
+/* Goodix GF318M fingerprint on platform bus: RST=47, INT=48, PWR=35. */
+&soc {
+	gf318m {
+		status = "ok";
+		compatible = "goodix,fingerprint";
+		input-device-name = "gf3208";
+		interrupt-parent = <&tlmm>;
+		interrupts = <48 0>;
+		vcc_spi-supply = <&pm8953_l10>;
+		vdd_ana-supply = <&pm8953_l10>;
+		vdd_io-supply = <&pm8953_l10>;
+		goodix,gpio_rst = <&tlmm 47 0x00>;
+		goodix,gpio_int = <&tlmm 48 0x00>;
+		goodix,gpio_pwr = <&tlmm 35 0x00>;
+		pinctrl-names = "goodixfp_reset_reset",
+				"goodixfp_reset_active",
+				"goodixfp_irq_active";
+		pinctrl-0 = <&gf_rst_suspend>;
+		pinctrl-1 = <&gf_rst_active>;
+		pinctrl-2 = <&gf_int_active>;
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+		pinctrl-names = "tlmm_gpio_key_active",
+				"tlmm_gpio_key_suspend";
+		pinctrl-0 = <&gpio_key_active>;
+		pinctrl-1 = <&gpio_key_suspend>;
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&tlmm 85 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			debounce-interval = <15>;
+		};
+
+		camera_snapshot {
+			label = "camera_snapshot";
+			gpios = <&tlmm 86 0x1>;
+			linux,input-type = <1>;
+			linux,code = <0x2fe>;
+			debounce-interval = <15>;
+		};
+	};
+
+	hall_device_out {
+		compatible = "nubia,hall_device";
+		status = "okay";
+		pinctrl-names = "hall_active", "hall_suspend";
+		pinctrl-0 = <&hall_int_0_default>;
+		pinctrl-1 = <&hall_int_0_sleep>;
+		vio-supply = <&pm8953_l5>;
+		interrupt-parent = <&tlmm>;
+		hall_device,hw_device_count = <1>;
+		hall_device,irq-gpio-0 = <&tlmm 46 0x2002>;
+	};
+
+	i2c@78b6000 {
+		aw2013_led@45 {
+			compatible = "aw2013";
+			reg = <0x45>;
+			vdd_ana-supply = <&pm8953_l10>;
+			vcc_i2c-supply = <&pm8953_l5>;
+			aw2013-irq-gpio = <&tlmm 36 0x00>;
+			middle_grade_percentage = <200>;
+			side_grade_percentage = <200>;
+			grade_scale-offset = <130>;
+			blink_max_grade = <255>;
+			onceblink_fade_time = <1>;
+			onceblink_fullon_time = <0>;
+			onceblink_fulloff_time = <0>;
+			autoblink_fade_time = <4>;
+			autoblink_fullon_time = <0>;
+			autoblink_fulloff_time = <2>;
+			max_current = <0x02>;
+		};
+	};
+};
+
+&sdhc_2 {
+	vdd-supply = <&pm8953_l11>;
+	qcom,vdd-voltage-level = <2950000 2950000>;
+	qcom,vdd-current-level = <15000 800000>;
+	vdd-io-supply = <&pm8953_l12>;
+	qcom,vdd-io-voltage-level = <1800000 2950000>;
+	qcom,vdd-io-current-level = <200 22000>;
+
+	pinctrl-names = "active", "sleep";
+	pinctrl-0 = <&sdc2_clk_on &sdc2_cmd_on &sdc2_data_on &sdc2_cd_on>;
+	pinctrl-1 = <&sdc2_clk_off &sdc2_cmd_off &sdc2_data_off>;
+
+	#address-cells = <0>;
+	interrupt-parent = <&sdhc_2>;
+	interrupts = <0 1 2>;
+	#interrupt-cells = <1>;
+	interrupt-map-mask = <0xffffffff>;
+	interrupt-map = <0 &intc 0 125 0
+			 1 &intc 0 221 0
+			 2 &tlmm 133 0>;
+	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
+	cd-gpios = <&tlmm 133 0x0>;
+
+	qcom,clk-rates = <400000 20000000 25000000 50000000 100000000
+			  200000000>;
+	qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "DDR50", "SDR104";
+	status = "ok";
+};
+
+&pm8953_typec {
+	ss-mux-supply = <&pm8953_l13>;
+};
+
+&wled {
+	qcom,cons-sync-write-delay-us = <1000>;
+};
+
+&flash_led {
+	compatible = "qcom,qpnp-flash-led";
+	reg = <0xd300 0x100>;
+	qcom,follow-otst2-rb-disabled;
+};
+
+&pm8953_gpios {
+	gpio@c100 {
+		qcom,mode = <0>;
+		qcom,output-type = <0>;
+		qcom,pull = <0>;
+		qcom,vin-sel = <2>;
+		qcom,out-strength = <3>;
+		qcom,src-sel = <0>;
+		qcom,master-en = <1>;
+		status = "okay";
+	};
+};
+
+&pm8953_l10 {
+	regulator-max-microvolt = <2850000>;
+};
+
+&blsp1_uart0 {
+	status = "ok";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart_console_active>;
+};

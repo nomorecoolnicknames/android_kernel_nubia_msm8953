@@ -1,0 +1,317 @@
+/*
+ * Nubia Z11 mini S (nx549j) pinctrl overlay
+ *
+ * Adds nx549j-specific pin groups missing from tissot's msm8953-pinctrl.dtsi:
+ *   - Synaptics touch (int/reset/power) on GPIO 65/64/139
+ *   - Broadcom BCM2079x NFC (int/en/wake) on GPIO 17/16/87
+ *   - TXC PA224 proximity on GPIO 44
+ *   - Nubia hall sensor on GPIO 46
+ *   - Goodix GF3208 fingerprint (int/rst/pwr) on GPIO 48/47/35
+ *
+ * Source: ztemt NX549J_M stock kernel arch/arm/boot/dts/qcom/NX549/
+ *         msm8953-pinctrl.dtsi (Nubia release for Android 6.0.1)
+ *
+ * Groups already present in tissot base (NOT redefined here):
+ *   mdss_dsi_active/suspend, mdss_te_active/suspend, gpio_key_active/suspend,
+ *   uart_console_active, sdc2_*, i2c_*, cam_sensor_*
+ *
+ * Overlay style: uses &tlmm { ... } to merge into the existing
+ * tlmm: pinctrl@1000000 node from msm8953-pinctrl.dtsi.
+ */
+
+&tlmm {
+	/* ------------------------------------------------------------ */
+	/* Synaptics DSX touchscreen: INT=65, RST=64, PWR=139           */
+	/* ------------------------------------------------------------ */
+	nubia_synaptics_int {
+		synaptics_int_active: synaptics_int_active {
+			mux {
+				pins = "gpio65";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio65";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		synaptics_int_suspend: synaptics_int_suspend {
+			mux {
+				pins = "gpio65";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio65";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	nubia_synaptics_reset {
+		synaptics_reset_active: synaptics_reset_active {
+			mux {
+				pins = "gpio64";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio64";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		synaptics_reset_suspend: synaptics_reset_suspend {
+			mux {
+				pins = "gpio64";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio64";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	nubia_synaptics_power {
+		synaptics_power_active: synaptics_power_active {
+			mux {
+				pins = "gpio139";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio139";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		synaptics_power_suspend: synaptics_power_suspend {
+			mux {
+				pins = "gpio139";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio139";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	/* ------------------------------------------------------------ */
+	/* Broadcom BCM2079x NFC: INT=17, EN=16, WAKE/CTL=87            */
+	/* Donor stock used legacy attr style; converted to mux/config. */
+	/* ------------------------------------------------------------ */
+	bcm2079x_int_pin {
+		bcm2079x_int_active: bcm2079x_int_active {
+			mux {
+				pins = "gpio17";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio17";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		bcm2079x_int_suspend: bcm2079x_int_suspend {
+			mux {
+				pins = "gpio17";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio17";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	bcm2079x_en_pin {
+		bcm2079x_en_active: bcm2079x_en_active {
+			mux {
+				pins = "gpio16";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio16";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		bcm2079x_en_suspend: bcm2079x_en_suspend {
+			mux {
+				pins = "gpio16";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio16";
+				drive-strength = <6>;
+				bias-disable;
+			};
+		};
+	};
+
+	bcm2079x_ctl_pin {
+		bcm2079x_ctl_active: bcm2079x_ctl_active {
+			mux {
+				pins = "gpio87";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio87";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		bcm2079x_ctl_suspend: bcm2079x_ctl_suspend {
+			mux {
+				pins = "gpio87";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio87";
+				drive-strength = <6>;
+				bias-disable;
+			};
+		};
+	};
+
+	/* ------------------------------------------------------------ */
+	/* TXC PA224 proximity sensor: IRQ=44                            */
+	/* ------------------------------------------------------------ */
+	pa224_int {
+		pa224_default: pa224_default {
+			mux {
+				pins = "gpio44";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio44";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		pa224_sleep: pa224_sleep {
+			mux {
+				pins = "gpio44";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio44";
+				drive-strength = <6>;
+				bias-high-impedance;
+			};
+		};
+	};
+
+	/* ------------------------------------------------------------ */
+	/* Hall sensor (nubia,hall_device): IRQ=46                       */
+	/* ------------------------------------------------------------ */
+	hall_int_0_pin {
+		hall_int_0_default: hall_int_0_default {
+			mux {
+				pins = "gpio46";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio46";
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+		hall_int_0_sleep: hall_int_0_sleep {
+			mux {
+				pins = "gpio46";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio46";
+				drive-strength = <6>;
+				bias-high-impedance;
+			};
+		};
+	};
+
+	/* ------------------------------------------------------------ */
+	/* Goodix GF3208 fingerprint: INT=48, RST=47, PWR=35             */
+	/* PWR (gpio35) is also lcd control on nx549j per ztemt comment. */
+	/* ------------------------------------------------------------ */
+	gf_pwr_gpio {
+		gf_pwr_active: gf_pwr_active {
+			mux {
+				pins = "gpio35";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio35";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+		};
+		gf_pwr_suspend: gf_pwr_suspend {
+			mux {
+				pins = "gpio35";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio35";
+				drive-strength = <10>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	gf_int_gpio {
+		gf_int_active: gf_int_active {
+			mux {
+				pins = "gpio48";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio48";
+				drive-strength = <16>;
+				bias-disable;
+			};
+		};
+		gf_int_suspend: gf_int_suspend {
+			mux {
+				pins = "gpio48";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio48";
+				drive-strength = <2>;
+				bias-disable;
+			};
+		};
+	};
+
+	gf_rst_gpio {
+		gf_rst_active: gf_rst_active {
+			mux {
+				pins = "gpio47";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio47";
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+		gf_rst_suspend: gf_rst_suspend {
+			mux {
+				pins = "gpio47";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio47";
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+	};
+};

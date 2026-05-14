@@ -1,0 +1,8 @@
+config FINGERPRINT_GOODIX_GF3208
+	tristate "Goodix GF3208 fingerprint driver (nx549j)"
+	depends on INPUT_FINGERPRINT
+	help
+	  Say Y here to enable the Goodix GF3208 fingerprint sensor driver
+	  for Nubia Z11 mini S (nx549j / MSM8953). Uses SoC platform bus
+	  with GPIO IRQ/RST/PWR. Requires Nubia-signed trustlet for full
+	  biometric functionality.

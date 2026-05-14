@@ -1,0 +1,125 @@
+/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/*
+ * Nubia Z11 mini S (nx549j) panel aggregator for msm8953 / 4.9 tissot tree.
+ * Ported from donor: github.com/ZhangDongzai/android_kernel_nubia_msm8953
+ * (nubia_panel/ subdirectory, 3.18.140).
+ *
+ * Adaptations applied vs 3.18 source:
+ *   - Removed qcom,mdss-dsi-panel-controller / qcom,mdss-dsi-panel-destination
+ *     (3.18-only; 4.9 derives controller from &mdss_dsi0 phandle)
+ *   - Removed #if NUBIA_LCD_ESD_CHECK / #if 0 preprocessor guards
+ *   - Removed nubia,* vendor-extension properties (nubia display driver
+ *     not present in tissot tree; standard MDSS driver used)
+ *   - Removed qcom,mdss-dsi-bl-pmic-pwm-frequency / bank-select (3.18 extras)
+ *   - qcom,mdss-dsi-panel-timings-phy-v2 retained (4.9 PHY v2 init path)
+ *   - qcom,mdss-dsi-panel-timings [legacy] retained for fallback
+ *   - bl_ctrl_dcs kept on cmd panels; bl_ctrl_wled kept on video panels
+ *     (matches donor; swap to bl_ctrl_wled globally if wled is wired)
+ */
+
+#include "dsi-panel-boe-otm1906c-1080p-5p2-cmd.dtsi"
+#include "dsi-panel-boe-otm1906c-1080p-5p2-video.dtsi"
+#include "dsi-panel-jdi-s6d1fa4x01-1080p-5p2-cmd.dtsi"
+#include "dsi-panel-jdi-s6d1fa4x01-1080p-5p2-video.dtsi"
+
+&soc {
+	/*
+	 * Generic 1.8 V vddio + lab/ibb 5.5 V supply used by JDI panels.
+	 * BOE panel uses 5.0 V lab/ibb — see boe_otm1906c_1080p_5p2_pwr_supply.
+	 */
+	dsi_panel_pwr_supply_nx549j: dsi_panel_pwr_supply_nx549j {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@0 {
+			reg = <0>;
+			qcom,supply-name = "vddio";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+		};
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "lab";
+			qcom,supply-min-voltage = <5500000>;
+			qcom,supply-max-voltage = <5500000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+		};
+
+		qcom,panel-supply-entry@2 {
+			reg = <2>;
+			qcom,supply-name = "ibb";
+			qcom,supply-min-voltage = <5500000>;
+			qcom,supply-max-voltage = <5500000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-post-on-sleep = <10>;
+			qcom,supply-pre-off-sleep = <5>;
+		};
+	};
+
+	boe_otm1906c_1080p_5p2_pwr_supply: boe_otm1906c_1080p_5p2_pwr_supply {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@0 {
+			reg = <0>;
+			qcom,supply-name = "vddio";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+		};
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "lab";
+			qcom,supply-min-voltage = <5000000>;
+			qcom,supply-max-voltage = <5000000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+		};
+
+		qcom,panel-supply-entry@2 {
+			reg = <2>;
+			qcom,supply-name = "ibb";
+			qcom,supply-min-voltage = <5000000>;
+			qcom,supply-max-voltage = <5000000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-post-on-sleep = <10>;
+			qcom,supply-pre-off-sleep = <5>;
+		};
+	};
+};
+
+/* Wire supply entries into each panel node */
+&dsi_boe_otm1906c_1080p_5p2_cmd {
+	qcom,panel-supply-entries = <&boe_otm1906c_1080p_5p2_pwr_supply>;
+};
+
+&dsi_boe_otm1906c_1080p_5p2_video {
+	qcom,panel-supply-entries = <&boe_otm1906c_1080p_5p2_pwr_supply>;
+};
+
+&dsi_jdi_s6d1fa4x01_1080p_5p2_cmd {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_nx549j>;
+};
+
+&dsi_jdi_s6d1fa4x01_1080p_5p2_video {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_nx549j>;
+};

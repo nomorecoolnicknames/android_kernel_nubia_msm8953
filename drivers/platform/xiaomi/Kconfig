@@ -1,0 +1,31 @@
+# Xiaomi configuration options
+
+config MACH_XIAOMI_MSM8953
+	bool "Xiaomi MSM8953"
+	depends on ARCH_MSM8953
+	help
+	  Support for MSM8953 Xiaomi variants
+
+menu "Xiaomi board selection"
+
+config MACH_XIAOMI_MIDO
+        bool "Mido board"
+        select MACH_XIAOMI_MSM8953
+        help
+          Support for Xiaomi Redmi note 3
+
+config MACH_XIAOMI_TISSOT
+	bool "Tissot board"
+	select MACH_XIAOMI_MSM8953
+	help
+	  Support for Xiomi MI A1 tissot
+
+config MACH_NUBIA_NX549J
+	bool "Nubia NX549J board"
+	select MACH_XIAOMI_MSM8953
+	help
+	  Support for Nubia Z17 mini (NX549J).
+	  Reuses Xiaomi MSM8953 platform glue while nubia-specific drivers
+	  are deferred (panels/touch/FP wired in later waves).
+
+endmenu
