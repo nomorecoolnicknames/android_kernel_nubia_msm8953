@@ -13,7 +13,8 @@ with pstore/ramoops or serial markers.
 
 - ROM tree: `/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot`
 - Kernel source: `kernel/nubia/msm8953`
-- Kernel HEAD: `60961b559 nx549j: 4.9.227 kernel (xiaomi/tissot fork) + wave-3 drivers (synaptics_dsx, gf3208, panel-detect, pinctrl-nx549j, ramoops region)`
+- Kernel code baseline: `60961b559 nx549j: 4.9.227 kernel (xiaomi/tissot fork) + wave-3 drivers (synaptics_dsx, gf3208, panel-detect, pinctrl-nx549j, ramoops region)`
+- State checkpoint HEAD: `94c60a586 nx549j: record 4.9 bootimage attempt54 state`
 - Device config: `device/nubia/nx549j/BoardConfig.mk`
   - `TARGET_KERNEL_CONFIG := lineageos_nx549j_defconfig`
 - Common config: `device/nubia/msm8953-common/BoardConfigCommon.mk`
