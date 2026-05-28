@@ -19,6 +19,7 @@
 #include <linux/of_graph.h>
 #include <linux/of_gpio.h>
 #include <linux/err.h>
+#include <linux/frgmark.h>
 
 #include "msm_drv.h"
 #include "sde_connector.h"
@@ -5022,6 +5023,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	static bool boot_displays_parsed;
 	static struct device_node *primary_np, *secondary_np;
 
+	frgmark(FRGMARK_STAGE_DSI_DISPLAY_PROBE_BEGIN);
 	if (!pdev || !pdev->dev.of_node) {
 		pr_err("pdev not found\n");
 		return -ENODEV;
@@ -5121,15 +5123,19 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 			primary_display = display;
 		else
 			secondary_display = display;
+		frgmark(FRGMARK_STAGE_DSI_DISPLAY_ACTIVE_INIT_BEGIN);
 		rc = _dsi_display_dev_init(display);
 		if (rc) {
 			pr_err("device init failed, rc=%d\n", rc);
 			return rc;
 		}
+		frgmark(FRGMARK_STAGE_DSI_DISPLAY_ACTIVE_INIT_DONE);
 
 		rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 		if (rc)
 			pr_err("component add failed, rc=%d\n", rc);
+		else
+			frgmark(FRGMARK_STAGE_DSI_DISPLAY_COMPONENT_DONE);
 
 		pr_debug("Component_add success: %s\n", display->name);
 		if (!strcmp(display->display_type, "primary"))
@@ -6896,9 +6902,15 @@ int dsi_display_unprepare(struct dsi_display *display)
 
 static int __init dsi_display_register(void)
 {
+	int rc;
+
+	frgmark(FRGMARK_STAGE_DSI_REGISTER_BEGIN);
 	dsi_phy_drv_register();
 	dsi_ctrl_drv_register();
-	return platform_driver_register(&dsi_display_driver);
+	rc = platform_driver_register(&dsi_display_driver);
+	frgmark(rc ? FRGMARK_STAGE_DSI_REGISTER_FAILED :
+		     FRGMARK_STAGE_DSI_REGISTER_DONE);
+	return rc;
 }
 
 static void __exit dsi_display_unregister(void)

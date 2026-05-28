@@ -39,6 +39,7 @@
 
 #include <linux/of_address.h>
 #include <linux/kthread.h>
+#include <linux/frgmark.h>
 #include "msm_drv.h"
 #include "msm_debugfs.h"
 #include "msm_fence.h"
@@ -686,6 +687,7 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 	ret = drm_dev_register(ddev, 0);
 	if (ret)
 		goto fail;
+	frgmark(FRGMARK_STAGE_MSM_DRM_DEV_REGISTER_DONE);
 	priv->registered = true;
 
 	drm_mode_config_reset(ddev);
@@ -696,11 +698,13 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 			dev_err(dev, "kms cont_splash config failed.\n");
 			goto fail;
 		}
+		frgmark(FRGMARK_STAGE_MSM_DRM_SPLASH_DONE);
 	}
 
 #ifdef CONFIG_DRM_FBDEV_EMULATION
 	if (fbdev)
 		priv->fbdev = msm_fbdev_init(ddev);
+	frgmark(FRGMARK_STAGE_MSM_DRM_FBDEV_DONE);
 #endif
 
 	ret = msm_debugfs_late_init(ddev);
@@ -1889,6 +1893,7 @@ static int add_gpu_components(struct device *dev,
 
 static int msm_drm_bind(struct device *dev)
 {
+	frgmark(FRGMARK_STAGE_MSM_DRM_BIND_BEGIN);
 	return msm_drm_init(dev, &msm_driver);
 }
 
@@ -1911,6 +1916,7 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
+	frgmark(FRGMARK_STAGE_MSM_DRM_PROBE_BEGIN);
 	ret = add_display_components(&pdev->dev, &match);
 	if (ret)
 		return ret;
@@ -1923,6 +1929,7 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	frgmark(FRGMARK_STAGE_MSM_DRM_COMPONENTS_DONE);
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	return component_master_add_with_match(&pdev->dev, &msm_drm_ops, match);
 }
@@ -1990,13 +1997,19 @@ void __exit adreno_unregister(void)
 
 static int __init msm_drm_register(void)
 {
+	int ret;
+
 	DBG("init");
+	frgmark(FRGMARK_STAGE_MSM_DRM_REGISTER_BEGIN);
 	msm_smmu_driver_init();
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
 	adreno_register();
-	return platform_driver_register(&msm_platform_driver);
+	ret = platform_driver_register(&msm_platform_driver);
+	frgmark(ret ? FRGMARK_STAGE_MSM_DRM_REGISTER_FAILED :
+		      FRGMARK_STAGE_MSM_DRM_REGISTER_DONE);
+	return ret;
 }
 
 static void __exit msm_drm_unregister(void)

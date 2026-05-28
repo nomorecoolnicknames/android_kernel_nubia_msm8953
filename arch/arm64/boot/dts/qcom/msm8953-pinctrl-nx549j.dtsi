@@ -1,7 +1,7 @@
 /*
  * Nubia Z11 mini S (nx549j) pinctrl overlay
  *
- * Adds nx549j-specific pin groups missing from tissot's msm8953-pinctrl.dtsi:
+ * Adds nx549j-specific pin groups missing from the msm8953-pinctrl.dtsi:
  *   - Synaptics touch (int/reset/power) on GPIO 65/64/139
  *   - Broadcom BCM2079x NFC (int/en/wake) on GPIO 17/16/87
  *   - TXC PA224 proximity on GPIO 44
@@ -11,7 +11,7 @@
  * Source: ztemt NX549J_M stock kernel arch/arm/boot/dts/qcom/NX549/
  *         msm8953-pinctrl.dtsi (Nubia release for Android 6.0.1)
  *
- * Groups already present in tissot base (NOT redefined here):
+ * Groups already present in upstream base (NOT redefined here):
  *   mdss_dsi_active/suspend, mdss_te_active/suspend, gpio_key_active/suspend,
  *   uart_console_active, sdc2_*, i2c_*, cam_sensor_*
  *

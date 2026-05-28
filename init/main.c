@@ -478,6 +478,8 @@ static void __init mm_init(void)
 	kaiser_init();
 }
 
+#include <linux/frgmark.h>
+
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
@@ -500,6 +502,8 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
+	frgmark_init_iomap();
+	frgmark(FRGMARK_STAGE_SETUP_ARCH_DONE);
 	/*
 	 * Set up the the initial canary ASAP:
 	 */
@@ -535,7 +539,9 @@ asmlinkage __visible void __init start_kernel(void)
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
+	frgmark(FRGMARK_STAGE_TRAP_INIT_DONE);
 	mm_init();
+	frgmark(FRGMARK_STAGE_MM_INIT_DONE);
 
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
@@ -543,6 +549,7 @@ asmlinkage __visible void __init start_kernel(void)
 	 * time - but meanwhile we still have a functioning scheduler.
 	 */
 	sched_init();
+	frgmark(FRGMARK_STAGE_SCHED_INIT_DONE);
 	/*
 	 * Disable preemption - early bootup scheduling is extremely
 	 * fragile until we cpu_idle() for the first time.
@@ -575,9 +582,12 @@ asmlinkage __visible void __init start_kernel(void)
 	init_timers();
 	hrtimers_init();
 	softirq_init();
+	frgmark(FRGMARK_STAGE_SOFTIRQ_INIT_DONE);
 	timekeeping_init();
+	frgmark(FRGMARK_STAGE_TIMEKEEPING_DONE);
 	time_init();
 	sched_clock_postinit();
+	frgmark(FRGMARK_STAGE_TIME_INIT_DONE);
 	printk_nmi_init();
 	perf_event_init();
 	profile_init();
@@ -594,6 +604,7 @@ asmlinkage __visible void __init start_kernel(void)
 	 * this. But we do want output early, in case something goes wrong.
 	 */
 	console_init();
+	frgmark(FRGMARK_STAGE_CONSOLE_INIT_DONE);
 	if (panic_later)
 		panic("Too many boot %s vars at `%s'", panic_later,
 		      panic_param);
@@ -873,11 +884,15 @@ static void __init do_basic_setup(void)
 {
 	cpuset_init_smp();
 	shmem_init();
+	frgmark(FRGMARK_STAGE_DRIVER_INIT_BEGIN);
 	driver_init();
+	frgmark(FRGMARK_STAGE_DRIVER_INIT_DONE);
 	init_irq_proc();
 	do_ctors();
 	usermodehelper_enable();
+	frgmark(FRGMARK_STAGE_INITCALLS_BEGIN);
 	do_initcalls();
+	frgmark(FRGMARK_STAGE_INITCALLS_DONE);
 }
 
 static void __init do_pre_smp_initcalls(void)
@@ -951,7 +966,9 @@ static int __ref kernel_init(void *unused)
 {
 	int ret;
 
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_BEGIN);
 	kernel_init_freeable();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_FREEABLE_DONE);
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
 	free_initmem();
@@ -962,9 +979,11 @@ static int __ref kernel_init(void *unused)
 	rcu_end_inkernel_boot();
 
 	if (ramdisk_execute_command) {
+		frgmark(FRGMARK_STAGE_EXEC_RAMDISK_INIT);
 		ret = run_init_process(ramdisk_execute_command);
 		if (!ret)
 			return 0;
+		frgmark(FRGMARK_STAGE_EXEC_RAMDISK_INIT_FAILED);
 		pr_err("Failed to execute %s (error %d)\n",
 		       ramdisk_execute_command, ret);
 	}
@@ -976,12 +995,14 @@ static int __ref kernel_init(void *unused)
 	 * trying to recover a really broken machine.
 	 */
 	if (execute_command) {
+		frgmark(FRGMARK_STAGE_EXEC_CMDLINE_INIT);
 		ret = run_init_process(execute_command);
 		if (!ret)
 			return 0;
 		panic("Requested init %s failed (error %d).",
 		      execute_command, ret);
 	}
+	frgmark(FRGMARK_STAGE_EXEC_FALLBACK_INIT);
 	if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
 	    !try_to_run_init_process("/bin/init") ||
@@ -1026,6 +1047,7 @@ static noinline void __init kernel_init_freeable(void)
 	page_alloc_init_late();
 
 	do_basic_setup();
+	frgmark(FRGMARK_STAGE_KERNEL_FREEABLE_DONE);
 
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)

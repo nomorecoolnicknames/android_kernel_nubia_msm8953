@@ -11,7 +11,7 @@
  */
 
 /*
- * Nubia Z11 mini S (nx549j) panel aggregator for msm8953 / 4.9 tissot tree.
+ * Nubia Z11 mini S (nx549j) panel aggregator for msm8953 / 4.9 Xiaomi base.
  * Ported from donor: github.com/ZhangDongzai/android_kernel_nubia_msm8953
  * (nubia_panel/ subdirectory, 3.18.140).
  *
@@ -20,7 +20,7 @@
  *     (3.18-only; 4.9 derives controller from &mdss_dsi0 phandle)
  *   - Removed #if NUBIA_LCD_ESD_CHECK / #if 0 preprocessor guards
  *   - Removed nubia,* vendor-extension properties (nubia display driver
- *     not present in tissot tree; standard MDSS driver used)
+ *     not present in base tree; standard MDSS driver used)
  *   - Removed qcom,mdss-dsi-bl-pmic-pwm-frequency / bank-select (3.18 extras)
  *   - qcom,mdss-dsi-panel-timings-phy-v2 retained (4.9 PHY v2 init path)
  *   - qcom,mdss-dsi-panel-timings [legacy] retained for fallback

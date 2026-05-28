@@ -1,6 +1,3 @@
-dtb-$(CONFIG_ARCH_QCOM)	+= apq8016-sbc.dtb msm8916-mtp.dtb
-dtb-$(CONFIG_ARCH_QCOM)	+= msm8996-mtp.dtb
-dtb-$(CONFIG_ARCH_QCOM)	+= apq8096-db820c.dtb
 
 ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 	dtbo-$(CONFIG_ARCH_SDM845) += \
@@ -530,9 +527,9 @@ sda429-bg-dvt2-wtp-overlay.dtbo-base := sda429-bg-dvt2-wtp.dtb
 sdm429-bg-wdp-overlay.dtbo-base := sdm429-bg-wdp.dtb
 sda429-bg-wdp-overlay.dtbo-base := sda429-bg-wdp.dtb
 else
+dtb-$(CONFIG_MACH_NUBIA_NX549J) += msm8953-mtp-nx549j.dtb
 ifeq ($(CONFIG_MACH_XIAOMI_MSM8953),y)
 dtb-$(CONFIG_MACH_XIAOMI_TISSOT) += msm8953-qrd-sku3-tissot.dtb
-dtb-$(CONFIG_MACH_NUBIA_NX549J) += msm8953-mtp-nx549j.dtb
 else
 dtb-$(CONFIG_ARCH_MSM8953) += msm8953-cdp.dtb \
 	msm8953-mtp.dtb \

@@ -354,3 +354,10 @@ config ARCH_ZYNQMP
 	  This enables support for Xilinx ZynqMP Family
 
 endmenu
+
+config MACH_NUBIA_NX549J
+	bool "Nubia Z11 mini S / NX549J"
+	depends on ARCH_MSM8953
+	default n
+	help
+	  Nubia Z11 mini S (nx549j) on MSM8953.
