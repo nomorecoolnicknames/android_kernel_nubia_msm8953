@@ -16,10 +16,18 @@
 #define FRG_SLOT_SIG   0x00
 #define FRG_SLOT_LAST  0x04
 #define FRG_SLOT_BASE  0x08
+#define FRG_FORCE_PANIC_ARTIFACT "nx549j-frgmark-force-panic"
+
+#ifndef FRGMARK_FORCE_PANIC_STAGE
+#define FRGMARK_FORCE_PANIC_STAGE 0
+#endif
 
 static void __iomem *frg_imem;
 static struct delayed_work frg_heartbeat_work;
 static unsigned int frg_heartbeat_count;
+static u8 frg_force_panic_stage = FRGMARK_FORCE_PANIC_STAGE;
+static bool frg_force_panic_armed = FRGMARK_FORCE_PANIC_STAGE != 0;
+static bool frg_force_panic_done;
 
 static const char *frgmark_stage_name(u8 stage)
 {
@@ -104,6 +112,42 @@ static const char *frgmark_stage_name(u8 stage)
 	}
 }
 
+static int __init frgmark_force_panic_setup(char *str)
+{
+	unsigned long value;
+
+	if (!str || !*str)
+		return 0;
+
+	value = simple_strtoul(str, NULL, 0);
+	if (value > 0xff) {
+		pr_emerg("FRGmark: invalid forced panic stage '%s'\n", str);
+		return 0;
+	}
+
+	frg_force_panic_stage = (u8)value;
+	frg_force_panic_armed = frg_force_panic_stage != 0;
+	pr_emerg("FRGmark: forced panic %s stage=%02x name=%s artifact=%s\n",
+		 frg_force_panic_armed ? "armed" : "disabled",
+		 frg_force_panic_stage, frgmark_stage_name(frg_force_panic_stage),
+		 FRG_FORCE_PANIC_ARTIFACT);
+	return 0;
+}
+early_param("frgmark.force_panic_stage", frgmark_force_panic_setup);
+
+static void frgmark_maybe_force_panic(u8 stage)
+{
+	if (!frg_force_panic_armed || frg_force_panic_done ||
+	    stage != frg_force_panic_stage)
+		return;
+
+	frg_force_panic_done = true;
+	pr_emerg("FRGmark: forced panic firing stage=%02x name=%s artifact=%s\n",
+		 stage, frgmark_stage_name(stage), FRG_FORCE_PANIC_ARTIFACT);
+	panic("FRGmark forced panic stage=%02x name=%s artifact=%s",
+	      stage, frgmark_stage_name(stage), FRG_FORCE_PANIC_ARTIFACT);
+}
+
 void __init frgmark_init_iomap(void)
 {
 	if (frg_imem)
@@ -129,6 +173,7 @@ void frgmark(u8 stage)
 	__raw_writel(v, frg_imem + FRG_SLOT_BASE + ((stage & 0x1F) << 2));
 	pr_emerg("FRGmark stage=%02x name=%s\n", stage,
 		 frgmark_stage_name(stage));
+	frgmark_maybe_force_panic(stage);
 }
 EXPORT_SYMBOL(frgmark);
 
