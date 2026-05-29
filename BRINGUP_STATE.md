@@ -3207,3 +3207,73 @@ mka bootimage -j4
 sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop/SHA256SUMS
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt93.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 ```
+
+2026-05-29 recovery ramoops preflight for boot-test runner:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script syntax and artifact identity verified offline; full
+  recovery partition preflight still requires the device to be attached in
+  recovery.
+
+Hypothesis:
+
+Even if attempt93 returns to recovery correctly, diagnostics are still weak if
+the live recovery partition is the old image that fails to bind ramoops. The
+runner should guarantee a pstore-readable recovery before flashing the broken
+4.9 boot image, because recovery-side pstore registration is part of the
+requested automatic diagnostic collection path.
+
+Evidence:
+
+- FACT: old recovery partition hash from capture `f89d96f3` was
+  `15156f7e8a11a6cdbfa01191bd3e5b1d34c9568461769b0c4b4b45f54b29804a`.
+- FACT: old recovery dmesg reported
+  `ramoops: The memory size and the record/console size must be non-zero`.
+- FACT: pstore-fixed recovery image is:
+  `/srv/forge/work/nx549j-preserve/recovery-ramoops-cmdline-20260529/recovery-ramoops-dtbprops-headerorig.img`.
+- FACT: pstore-fixed recovery SHA-256 is:
+  `9700236dfa0d2057cf29c4247fa27a0d0b85a9e64e5033d511d6ac8f0469961c`.
+- FACT: pstore-fixed recovery runtime check at
+  `/srv/forge/work/nx549j-preserve/recovery-ramoops-cmdline-20260529/bootcheck-dtbprops-20260529-0828/dmesg.txt`
+  contains `pstore: Registered ramoops as persistent store backend`.
+- FACT: `bash -n` passed for
+  `/srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh`,
+  `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`,
+  `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`, and
+  `/srv/forge/android/nx549j/scripts/nx549j-run-attempt93.sh`.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh`
+  - verifies the known pstore-fixed recovery image SHA, checks the live
+    recovery partition prefix, backs up a mismatching recovery prefix, flashes
+    the pstore-fixed image, and verifies the partition prefix SHA.
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - runs the recovery ramoops preflight before backing up `misc` and flashing
+    the test boot image; it can be skipped only with
+    `SKIP_RECOVERY_RAMOOPS_CHECK=1`.
+- `/srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop/README.md`
+  - records that the latest runner includes recovery pstore preflight.
+
+Expected next marker:
+
+- A runtime directory from `nx549j-run-latest.sh` should include
+  `recovery-ramoops-preflight/recovery-ramoops-identity.env`.
+- If recovery was old, the preflight should preserve
+  `recovery-ramoops-preflight/recovery-current-prefix.img` and verify the live
+  recovery prefix SHA as
+  `9700236dfa0d2057cf29c4247fa27a0d0b85a9e64e5033d511d6ac8f0469961c`.
+
+Rollback condition:
+
+- Disable with `SKIP_RECOVERY_RAMOOPS_CHECK=1` or revert the runner hook if
+  flashing the pstore-fixed recovery image prevents entering recovery on this
+  device. Keep the backup image from the runtime directory for manual restore.
+
+Verification commands:
+
+```sh
+bash -n /srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh /srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-run-attempt93.sh
+/srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh --help
+sha256sum /srv/forge/work/nx549j-preserve/recovery-ramoops-cmdline-20260529/recovery-ramoops-dtbprops-headerorig.img
+```
