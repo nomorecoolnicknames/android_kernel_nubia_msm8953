@@ -4402,3 +4402,34 @@ Rollback condition:
 - Revert if the helper misclassifies a visible recovery device or introduces
   any device-write operation. Current implementation does not call `adb shell`
   or write to any block device.
+
+2026-05-29 attempt97 reverse ADB preflight on port 15038:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side reverse ADB preflight only; not flashed because
+  ADB port `15038` currently lists no devices.
+
+Evidence:
+
+- FACT: user reported a new Windows reverse tunnel command on port `15038`
+  was started after port `15037` was occupied.
+- FACT: `scripts/nx549j-check-reverse-adb.sh` wrote
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/reverse-adb-check-20260529-235011/`.
+- FACT: `status.env` reports `verdict=NO_ADB_DEVICES`, `listener=present`,
+  `adb_status=ok`, `device_count=0`, empty `target_state`,
+  `serial=30785d1a`, `adb_host=127.0.0.1`, and `adb_port=15038`.
+- FACT: `adb-devices.txt` contains only `List of devices attached`.
+- FACT: because the preflight verdict is not `TARGET_RECOVERY_READY`, no
+  unattended flash was started and no boot/misc writes occurred.
+
+Expected next action:
+
+- On the Windows USB host, make `adb devices -l` show `30785d1a` in
+  `recovery` first. Then keep the `15038` reverse tunnel open and rerun:
+  `ADB_PORT=15038 scripts/nx549j-check-reverse-adb.sh <out-dir>`.
+  Proceed with `ADB_PORT=15038 scripts/nx549j-run-unattended-latest.sh` only
+  after `TARGET_RECOVERY_READY`.
+
+Rollback condition:
+
+- None; this is an evidence-only preflight with no device writes.
