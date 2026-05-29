@@ -1048,6 +1048,7 @@ static noinline void __init kernel_init_freeable(void)
 	smp_prepare_cpus(setup_max_cpus);
 
 	workqueue_init();
+	frgmark_recovery_bcb_kick("kernel-init-workqueue-ready");
 
 	do_pre_smp_initcalls();
 	lockup_detector_init();

@@ -3277,3 +3277,87 @@ bash -n /srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh /srv
 /srv/forge/android/nx549j/scripts/nx549j-ensure-recovery-ramoops.sh --help
 sha256sum /srv/forge/work/nx549j-preserve/recovery-ramoops-cmdline-20260529/recovery-ramoops-dtbprops-headerorig.img
 ```
+
+2026-05-29 attempt94 early BCB kick + no-reset kmsg dump:
+
+- Patch category: DIAGNOSTIC target kernel + tooling.
+- Runtime status: built and verified offline; not flashed because the
+  device/tunnel was intentionally disconnected before runtime testing.
+
+Hypothesis:
+
+attempt93 correctly removed the unsafe no-BCB reset loop, but it could still
+miss the best BCB write window if the normal retry work does not execute until
+too late. Kicking the BCB retry immediately after `workqueue_init()` gives the
+kernel an earlier blocking-capable write attempt. If the target still cannot
+write BCB by the 120-second timeout, a one-shot `kmsg_dump(KMSG_DUMP_PANIC)`
+should push target-kernel logs into the pstore/ramoops path without forcing a
+raw reset loop.
+
+Evidence:
+
+- FACT: `mka bootimage -j4` completed successfully in 01:41.
+- FACT: attempt94 is packaged at
+  `/srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump/`.
+- FACT: attempt94 boot image is
+  `/srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump/boot-early-bcb-kick-kmsgdump-120s.img`.
+- FACT: attempt94 boot SHA-256 is
+  `ff94a5b81a6d4f7a17c785f109603eb4ff3c95e053b8f330f8f5c3cbc7da4489`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, no-BCB no-loop gate, pstore config, serial
+  early console config, and ramoops DTB.
+- FACT: `verify-symbols.txt` contains `frgmark_recovery_bcb_kick`.
+- FACT: `verify-vmlinux-strings.txt` contains
+  `FRGmark: BCB retry kicked` and
+  `FRGmark: dumping kmsg without reset`.
+
+Files changed:
+
+- `arch/arm64/kernel/frgmark.c`
+  - adds `frgmark_recovery_bcb_kick()` for an immediate BCB retry after the
+    workqueue worker pool is ready;
+  - adds a one-shot kmsg dump on the no-BCB timeout hold paths;
+  - keeps the no-BCB no-loop guard from attempt93.
+- `include/linux/frgmark.h`
+  - declares `frgmark_recovery_bcb_kick()`.
+- `init/main.c`
+  - calls `frgmark_recovery_bcb_kick("kernel-init-workqueue-ready")` right
+    after `workqueue_init()`.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - checks the new BCB kick symbol and marker strings.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt94.sh`
+  - verifies the attempt94 boot image SHA and invokes the BCB/recovery runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - now delegates to attempt94.
+- `/srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump/README.md`
+  - records offline status, SHA, and flash path.
+
+Expected next marker:
+
+- On the next device run, `nx549j-run-latest.sh` should flash attempt94 after
+  the recovery ramoops preflight.
+- If BCB becomes writable, recovery should be selected by BCB and runtime
+  capture should include `FRGMARK-BCB-v1`.
+- If BCB still never becomes writable, the device should avoid the old 2-3s
+  no-BCB raw reset loop and a manual recovery capture may contain a pstore kmsg
+  dump from the target kernel.
+
+Rollback condition:
+
+- Revert attempt94 if runtime shows the early BCB kick blocks boot progress
+  before later initcall markers, or if the kmsg dump path itself destabilizes
+  the timeout hold path. In that case return to attempt93, which has the same
+  no-BCB no-loop safety without the earlier kick/dump addition.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump boot-early-bcb-kick-kmsgdump-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt94.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+```
