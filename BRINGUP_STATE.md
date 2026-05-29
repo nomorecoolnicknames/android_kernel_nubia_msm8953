@@ -3571,3 +3571,49 @@ Expected next marker:
 - The next attempt94 flash must start with `30785d1a` visible as ADB
   `recovery`. If it is already Android `device`, the runner should reject the
   flash instead of attempting block writes from the wrong context.
+
+2026-05-29 flash runner crash-safe failure summary:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script behavior checked offline; no device available.
+
+Problem fixed:
+
+The runner could still exit after creating a flash-run directory but before
+writing the normal final `README.md` and `SUMMARY.md`. That matters for long
+unattended builds or disconnected-device windows: a failed host-side phase
+should leave an explicit "runner failed" report, not an ambiguous half-written
+directory that looks like missing evidence.
+
+Files changed outside the kernel git repository:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - adds an `EXIT` trap that writes a fallback `README.md` when the runner
+    fails after the run directory exists but before the normal final summary;
+  - tracks the current phase (`push-boot`, `flash-boot`, `wait-boot-result`,
+    capture, restore, etc.) so the fallback report points at the failed stage;
+  - fixes unescaped backticks in unquoted heredocs so README generation cannot
+    accidentally execute inline text as shell command substitution.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - reports `Recovery result: RUNNER_FAILED` for
+    `Result: runner-failed-before-final-summary`.
+
+Evidence:
+
+- FACT: `bash -n` passed for `nx549j-bcb-lib.sh`,
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-latest.sh`,
+  `nx549j-run-attempt94.sh`, `nx549j-verify-release-artifact.sh`, and
+  `nx549j-ensure-recovery-ramoops.sh`.
+- FACT: `rg -n '\`[^\`]+\`|\\\`'` now shows only escaped README backticks in
+  the flash runner and summary script.
+- FACT: attempt94 packaged files pass `sha256sum -c SHA256SUMS`.
+
+Expected next marker:
+
+- If the runner fails mid-flow after creating the run directory, the directory
+  should contain `README.md` with `Result: runner-failed-before-final-summary`,
+  a `Failure phase:` line, and `SUMMARY.md` with `Recovery result:
+  RUNNER_FAILED`.
+- If the runner reaches a normal result, the normal final `README.md` remains
+  authoritative and the fallback trap must not overwrite it.
