@@ -3395,3 +3395,54 @@ Interpretation:
 - Goal completion remains unproven: there is no current exact flashed-image
   identity, no current automatic recovery proof, and no fresh target-kernel
   pstore/BCB evidence from attempt94.
+
+2026-05-29 flash runner userspace-hit audit:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script behavior checked offline; no device available.
+
+Problem fixed:
+
+The previous flash runner waited only for ADB `recovery`. If a future 4.9
+candidate actually reaches Android/userspace and returns as normal ADB
+`device`, the runner could misclassify that success as an automatic-recovery
+timeout. That would directly hide the primary goal signal.
+
+Files changed outside the kernel git repository:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-bcb-lib.sh`
+  - adds `wait_for_target_recovery_or_device()`, recording
+    `wait-boot-result.env` with `state=recovery` or `state=device`.
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - uses the new wait helper;
+  - keeps the existing automatic recovery capture path;
+  - adds `after-userspace/` capture for normal Android `device`, including
+    `cmdline.txt`, `dmesg.txt`, bounded `logcat.txt`, pstore files, misc first
+    page before restore, marker grep, and misc restore.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - reports `Recovery result: USERSPACE` when the run result is
+    `userspace-observed-within-wait-window`;
+  - includes userspace marker/pstore/misc evidence in the summary.
+
+Evidence:
+
+- FACT: `bash -n` passed for `nx549j-bcb-lib.sh`,
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-latest.sh`, and
+  `nx549j-run-attempt94.sh`.
+- FACT: a synthetic summary fixture with
+  `Result: userspace-observed-within-wait-window` produced `Recovery result:
+  USERSPACE`, `Boot identity: PASS`, and `Target marker evidence: PRESENT`.
+- FACT: with no device attached, `nx549j-run-latest.sh` still refuses to act on
+  an absent target: `ERROR: target 30785d1a is not online through ADB,
+  state=''`.
+
+Expected next marker:
+
+- If attempt94 reaches Android, the runtime directory should contain
+  `after-userspace/`, `wait-boot-result.env` with `state=device`, and
+  `SUMMARY.md` with `Recovery result: USERSPACE`.
+- If attempt94 returns to recovery, the old `after-recovery/` path and
+  automatic-recovery proof rules still apply.
+- If neither state appears, the run remains a timeout and should be finished
+  after manual recovery using `nx549j-finish-flash-timeout.sh`.
