@@ -3879,3 +3879,50 @@ sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspac
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt97.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 printf 'FRGmark stage=17\n0x46524717\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
 ```
+
+2026-05-29 attempt97 runner decode update:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side capture tooling update only; not flashed because no
+  device is attached on ADB port `15037`.
+
+Evidence:
+
+- FACT: `adb -H 127.0.0.1 -P 15037 -s 30785d1a get-state` returned
+  `device '30785d1a' not found`.
+- FACT: `bash -n` passed for
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-finish-flash-timeout.sh`, `nx549j-collect-early-markers.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-attempt97.sh`, and
+  `nx549j-run-latest.sh`.
+- FACT: decoder smoke decoded `0x15` as `userspace_reached`, `0x16` as
+  `recovery_timeout_reboot`, and `0x17` as `userspace_ack`.
+- FACT: `timeout 10s scripts/nx549j-run-latest.sh` refused to flash with
+  `ERROR: target 30785d1a is not online through ADB, state=''`.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - automatic recovery and userspace capture paths now emit
+    `marker-decode.txt` through the FRGmark decoder and grep the attempt97 ACK
+    strings.
+- `/srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh`
+  - manual recovery finish now emits `marker-decode.txt` and greps attempt97
+    ACK strings before restoring `misc`.
+- `/srv/forge/android/nx549j/scripts/nx549j-collect-early-markers.sh`
+  - standalone manual marker capture now emits `marker-decode.txt`.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - summary evidence now considers `marker-decode.txt` and recognizes
+    attempt97 stage names/ACK strings.
+
+Expected next marker:
+
+- The next connected-device run should produce `marker-decode.txt` containing
+  `0x15 userspace_reached`, `0x16 recovery_timeout_reboot`, or
+  `0x17 userspace_ack` if any FRGmark evidence survives into recovery or
+  userspace capture.
+
+Rollback condition:
+
+- Revert only if the decoder call makes capture scripts fail before `misc`
+  restore. The decoder is best-effort and currently guarded with `|| true`.
