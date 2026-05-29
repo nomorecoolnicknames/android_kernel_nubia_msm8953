@@ -2680,3 +2680,90 @@ mka bootimage -j4
 /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map boot-stock-reserved-memory-map-120s.img
 rg -n 'modem_region|reloc_region|secure_region|adsp_region|memory-region = <0x159>' /srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map/verify-stock-memory-map.txt
 ```
+
+### 2026-05-29 - Queue BCB checkpoints off the initcall path
+
+Category: DIAGNOSTIC
+
+Hypothesis: the recovery fallback instrumentation should not perform blocking
+storage I/O on the main initcall path while the current priority is to get the
+kernel to userspace. The current code called `frgmark_write_recovery_bcb()`
+from `frgmark_maybe_checkpoint_bcb()` after every initcall level until BCB
+success. That helper opens `misc` with `blkdev_get_by_dev()`, writes with
+`submit_bio_wait()`, and flushes with `blkdev_issue_flush()`. If eMMC or the
+partition scan is slow or wedged, this diagnostic path can become a boot
+blocker by itself.
+
+Evidence:
+
+- FACT: `init/main.c` runs `frgmark(FRGMARK_STAGE_INITCALL_LEVEL_BASE + level)`
+  synchronously after each initcall level in `do_initcalls()`.
+- FACT: before attempt88, `frgmark_maybe_checkpoint_bcb()` synchronously called
+  `frgmark_write_recovery_bcb(frgmark_stage_name(stage))` on those stage
+  markers.
+- FACT: `frgmark_write_recovery_bcb()` reaches `blkdev_get_by_dev()`,
+  `submit_bio_wait()`, and `blkdev_issue_flush()`.
+- FACT: workqueue execution is available before `do_basic_setup()` because
+  `kernel_init_freeable()` calls `workqueue_init()` before `do_basic_setup()`.
+- FACT: attempt88 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/boot-async-bcb-checkpoint-120s.img`.
+- FACT: attempt88 boot SHA-256:
+  `72adcdcf6d301c02dc0d462ec4d6e78e4ef07e7dbffc476cc2a611b7396b1adb`.
+- FACT: attempt88 was built and packaged offline only; it has not been
+  flashed or runtime-proven.
+
+Files changed:
+
+- `arch/arm64/kernel/frgmark.c`
+  - changes initcall checkpoint BCB handling from direct synchronous write to
+    `mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0)`;
+  - changes late-init BCB prewrite from direct synchronous write to the same
+    queued worker path;
+  - adds a one-shot emergency log when an initcall checkpoint queues the BCB
+    writer.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt88.sh`
+  - adds a SHA-gated runner for the attempt88 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt88.
+- `/srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/README.md`
+  - records artifact status, claim boundary, verification, and next device
+    step.
+
+Why each file changed:
+
+- Keeping BCB writes in a worker preserves the automatic recovery fallback when
+  storage is healthy, but stops the diagnostic checkpoint from blocking the
+  main boot path before userspace.
+- The timeout timer path and delayed BCB retry path are left intact, so this is
+  not a broad disable of recovery automation.
+
+Expected next marker:
+
+- If synchronous checkpoint I/O was stalling the boot path, attempt88 should
+  advance farther than attempt87 or reach userspace.
+- If storage is healthy, recovery logs should include
+  `FRGmark: BCB checkpoint write queued` followed later by
+  `FRGmark: BCB recovery command written`.
+- If the device still hangs before workqueue/BCB write, the 120-second timeout
+  may still fall back to no-BCB reset; then the next blocker remains earlier
+  than available block I/O.
+
+Rollback condition:
+
+- Revert this diagnostic if attempt88 loses automatic recovery compared with
+  attempt87 while attempt87 is proven not to block on checkpoint I/O, or if a
+  fresh capture proves the synchronous initcall checkpoint is the only path
+  that writes BCB before the target failure.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint boot-async-bcb-checkpoint-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/SHA256SUMS
+cat /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/verify-async-bcb-checkpoint.txt
+```

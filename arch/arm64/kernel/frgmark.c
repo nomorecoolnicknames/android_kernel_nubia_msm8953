@@ -87,6 +87,7 @@ static bool frg_force_reset_done;
 static bool frg_recovery_timeout_done;
 static bool frg_panic_notifier_registered;
 static bool frg_recovery_timeout_timer_armed;
+static bool frg_recovery_bcb_checkpoint_requested;
 static bool frg_early_wdt_programmed;
 static bool frg_raw_wdt_enabled;
 static bool frg_recovery_bcb_written;
@@ -831,7 +832,16 @@ static void frgmark_maybe_checkpoint_bcb(u8 stage)
 	    stage > FRGMARK_STAGE_INITCALL_LATE_DONE)
 		return;
 
-	frgmark_write_recovery_bcb(frgmark_stage_name(stage));
+	if (!frg_recovery_bcb_work_armed)
+		return;
+
+	mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
+	if (!frg_recovery_bcb_checkpoint_requested) {
+		frg_recovery_bcb_checkpoint_requested = true;
+		pr_emerg("FRGmark: BCB checkpoint write queued stage=%02x name=%s artifact=%s\n",
+			 stage, frgmark_stage_name(stage),
+			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+	}
 }
 
 void __init frgmark_recovery_timeout_arm(void)
@@ -1002,8 +1012,8 @@ static int __init frgmark_late_init(void)
 	if (!frg_imem)
 		return 0;
 
-	if (frg_recovery_timeout_armed)
-		frgmark_write_recovery_bcb("late-init-prewrite");
+	if (frg_recovery_timeout_armed && frg_recovery_bcb_work_armed)
+		mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
 	INIT_DELAYED_WORK(&frg_heartbeat_work, frgmark_heartbeat);
 	schedule_delayed_work(&frg_heartbeat_work, 10 * HZ);
 	return 0;
