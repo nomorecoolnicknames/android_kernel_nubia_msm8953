@@ -150,6 +150,8 @@ static const char *frgmark_stage_name(u8 stage)
 		return "console_init_done";
 	case FRGMARK_STAGE_USERSPACE_REACHED:
 		return "userspace_reached";
+	case FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT:
+		return "recovery_timeout_reboot";
 	case FRGMARK_STAGE_HEAD_ENTRY:
 		return "head_entry";
 	case FRGMARK_STAGE_HEAD_ARGS_PRESERVED:
@@ -782,6 +784,7 @@ static void frgmark_recovery_timeout_fire(struct work_struct *work)
 
 	frg_recovery_timeout_done = true;
 	frgmark_prime_recovery_selectors("timeout");
+	frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT);
 	pr_emerg("FRGmark: recovery timeout firing seconds=%u artifact=%s\n",
 		 frg_recovery_timeout_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
 	kmsg_dump(KMSG_DUMP_PANIC);
@@ -820,6 +823,7 @@ static void frgmark_recovery_timeout_timer_fire(unsigned long data)
 	}
 
 	frg_recovery_timeout_done = true;
+	frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT);
 	if (!frgmark_drop_mapped_pshold("timer-timeout"))
 		msm_trigger_wdog_bite();
 }

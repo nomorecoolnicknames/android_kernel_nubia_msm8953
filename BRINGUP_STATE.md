@@ -3701,3 +3701,91 @@ sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspac
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt95.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 printf 'FRGmark stage=15\n0x46524715\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
 ```
+
+2026-05-29 attempt96 recovery timeout reboot stage marker:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built, packaged, and locally verified; not flashed because no
+  device is attached on ADB port `15037`.
+
+Hypothesis:
+
+- HYPOTHESIS: the next capture needs to distinguish three outcomes without
+  relying on transient printk only: userspace handoff (`0x15`), recovery
+  timeout reaching the reboot/reset handoff after BCB is written (`0x16`), and
+  a failure before either boundary. A dedicated timeout reboot marker will show
+  whether automatic recovery failed before the reset handoff or after the
+  kernel asked the platform to reboot to recovery.
+
+Evidence:
+
+- FACT: attempt96 is packaged at
+  `/srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-reboot-stage-marker/`.
+- FACT: attempt96 boot image is
+  `/srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-reboot-stage-marker/boot-timeout-reboot-stage-marker-120s.img`.
+- FACT: attempt96 boot SHA-256 is
+  `b204f4b6a82ebe46a7ae742cdce82538d55aa09d2b8d3d15044f638e2956e4ad`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, no-BCB no-loop gate, pstore config, serial
+  early console config, and ramoops DTB.
+- FACT: `verify-vmlinux-strings.txt` contains `userspace_reached`,
+  `recovery_timeout_reboot`, and the recovery timeout printk strings.
+- FACT: the decoder shell script maps stage `0x16` to
+  `recovery_timeout_reboot`, and a stdin smoke test decoded `FRGmark stage=16`
+  and `0x46524716` as `recovery_timeout_reboot`.
+- FACT: with no device attached on ADB port `15037`, `nx549j-run-latest.sh`
+  refuses to flash with `ERROR: target 30785d1a is not online through ADB,
+  state=''`.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT` as stage `0x16`.
+- `arch/arm64/kernel/frgmark.c`
+  - maps stage `0x16` to `recovery_timeout_reboot`;
+  - writes stage `0x16` immediately before the workqueue timeout path calls
+    `kernel_restart("recovery")`;
+  - writes stage `0x16` immediately before the timer fallback drops PS_HOLD or
+    bites the watchdog after BCB has been written.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes stage `0x16` as `recovery_timeout_reboot`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - shows stage `0x16` as `recovery_timeout_reboot` in the debug page marker
+    table.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the `recovery_timeout_reboot` string in packaged vmlinux
+    verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt96.sh`
+  - verifies the attempt96 boot image SHA and invokes the BCB/recovery runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - now delegates to attempt96.
+- `/srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-reboot-stage-marker/README.md`
+  - records offline status, SHA, expected marker interpretation, and next flash
+    action.
+
+Expected next marker:
+
+- `0x15 userspace_reached`: the kernel crossed into Android init/userspace and
+  recovery timeout cleanup should run.
+- `0x16 recovery_timeout_reboot`: userspace was not reached, BCB was written,
+  and the timeout path attempted recovery reboot/reset.
+- No `0x15` and no `0x16`: the failure remains before userspace handoff and
+  before the recovery timeout reset handoff.
+
+Rollback condition:
+
+- Revert attempt96 if runtime shows the extra timeout marker changes timing or
+  suppresses recovery reboot/reset behavior. Return to attempt95 in that case;
+  attempt95 has the same userspace boundary marker without the timeout reboot
+  marker.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/kernel/nubia/msm8953
+env PATH=/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin:/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/bin:/home/n8n/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin CCACHE_DIR=/srv/forge/android/ccache ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- HOST_EXTRACFLAGS=-I/usr/include/node make O=/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/out/target/product/nx549j/obj/KERNEL_OBJ Image.gz-dtb -j4 HOSTLOADLIBES_sign-file=/usr/lib/x86_64-linux-gnu/libcrypto.so.3 HOSTLOADLIBES_extract-cert=/usr/lib/x86_64-linux-gnu/libcrypto.so.3
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-reboot-stage-marker boot-timeout-reboot-stage-marker-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-reboot-stage-marker/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt96.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+printf 'FRGmark stage=16\n0x46524716\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
+```
