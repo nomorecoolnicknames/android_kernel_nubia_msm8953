@@ -3095,3 +3095,35 @@ Verification commands:
 sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof/SHA256SUMS
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt92-pstore-panic.sh
 ```
+
+2026-05-29 disconnected-device offline checkpoint:
+
+- Patch category: documentation / evidence checkpoint only.
+- Runtime status: no target is attached to the forwarded ADB endpoint; no new
+  runtime claim can be made from this checkpoint.
+- FACT: `adb -H 127.0.0.1 -P 15037 devices -l` returned only the header
+  `List of devices attached`.
+- FACT: no active `mka`, `ninja`, kernel `make`, `clang`, `gcc`, `ld.lld`,
+  Soong, or Kati process was found by the current process check.
+- FACT: attempt91 remains the latest normal boot-to-userspace candidate:
+  `/srv/forge/work/nx549j-preserve/release-attempt91-20260529-serial-earlycon/boot-serial-earlycon-120s.img`.
+- FACT: attempt91 SHA-256 remains:
+  `a60ab2a60c6a2bb48008bddd1a07243f3bd9ea7e4be9fcb16965c365af33b9f9`.
+- FACT: `sha256sum -c SHA256SUMS` and
+  `scripts/nx549j-verify-release-artifact.sh` passed for attempt91.
+- FACT: attempt92 remains a separate non-default pstore/recovery proof image:
+  `/srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof/boot-late-panic-pstore-proof.img`.
+- FACT: attempt92 SHA-256 remains:
+  `4ee2bb41b75304e9fbbb9bc81dc93bf501fbff2722dc04107cc055a8dc410c81`.
+- FACT: `sha256sum -c SHA256SUMS` and
+  `scripts/nx549j-verify-release-artifact.sh` passed for attempt92.
+- FACT: current DT audit rejected one suspected stocktruth omission:
+  compiled attempt91 DTB already has `qcom,peripheral-size = <0x500000>` for
+  `mem_client_3_size`.
+- INFERENCE: with the device disconnected, the correct status is "offline
+  artifacts are ready; flash/runtime proof is still required", not "boot,
+  userspace, pstore, or automatic recovery is fixed".
+- Next runtime action: flash attempt91 with
+  `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh` when serial
+  `30785d1a` is back in recovery. Run attempt92 only as the deliberate
+  pstore/recovery proof test, not as the default boot image.
