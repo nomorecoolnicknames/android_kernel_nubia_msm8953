@@ -3968,3 +3968,43 @@ Rollback condition:
 - Remove the helper if it ever launches on a non-recovery state or wrong
   serial. Current smoke proves it waits instead of flashing while the target is
   missing.
+
+2026-05-29 attempt97 recovery-only manual capture helpers:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side helper hardening only; not flashed because no
+  device is attached on ADB port `15037`.
+
+Evidence:
+
+- FACT: `bash -n scripts/nx549j-finish-flash-timeout.sh
+  scripts/nx549j-collect-early-markers.sh
+  scripts/nx549j-flash-boot-with-bcb-fallback.sh
+  scripts/nx549j-wait-recovery-and-run-latest.sh` passed.
+- FACT: `scripts/nx549j-collect-early-markers.sh /tmp/nx549j-collect-smoke`
+  refused to run with `ERROR: target 30785d1a is not online through ADB,
+  state=''`.
+- FACT: `rg` confirms `nx549j-finish-flash-timeout.sh`,
+  `nx549j-collect-early-markers.sh`, and
+  `nx549j-flash-boot-with-bcb-fallback.sh` all call
+  `require_recovery_target`.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh`
+  - manual timeout finish now requires ADB `recovery` state before capture and
+    `misc` restore.
+- `/srv/forge/android/nx549j/scripts/nx549j-collect-early-markers.sh`
+  - standalone early marker collection now requires ADB `recovery` state.
+
+Expected next action:
+
+- If attempt97 times out and the phone is manually returned to recovery, run
+  `scripts/nx549j-finish-flash-timeout.sh <flash-run-dir>`. It should refuse
+  to proceed unless the target serial is actually in recovery.
+
+Rollback condition:
+
+- Revert only if a known-good recovery exposes ADB state as `device` while
+  still allowing recovery partition writes; current evidence and previous
+  scripts treat `recovery` as the safe block-write state.
