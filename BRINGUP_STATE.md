@@ -2814,11 +2814,16 @@ Files changed:
 - `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
   - points the generic runner at attempt89.
 - `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
-  - runs marker grep after dumping `misc`, so the BCB stamp is included.
+  - runs marker grep after dumping `misc`, so the BCB stamp is included;
+  - pulls the first `misc` page as
+    `after-recovery/misc-first-page-before-restore.img` and extracts
+    printable strings to `after-recovery/misc-first-page-strings.txt`.
 - `/srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh`
-  - also greps after dumping `misc` for manual-recovery finishes.
+  - also pulls/decodes the first `misc` page and greps after dumping `misc`
+    for manual-recovery finishes.
 - `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
-  - treats `FRGMARK-BCB`/`last_stage` as marker evidence.
+  - treats `FRGMARK-BCB`/`last_stage` as marker evidence and reports a
+    dedicated `BCB stage stamp` verdict.
 - `/srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/README.md`
   - records artifact status, claim boundary, verification, and next device
     step.
@@ -2836,6 +2841,8 @@ Expected next marker:
 - If the target reaches a kernel-side BCB write and later returns to recovery,
   `after-recovery/marker-grep.txt` or a manual-finish `marker-grep.txt` should
   contain `FRGMARK-BCB-v1` and `last_stage=0x..`.
+  `misc-first-page-strings.txt` should decode the same stamp from the raw
+  first `misc` page before restore.
 - If automatic recovery still times out and manual recovery shows no BCB stamp,
   the hang remains before successful block-device BCB writes or in a reset path
   that clears/wipes the page before recovery can read it.
