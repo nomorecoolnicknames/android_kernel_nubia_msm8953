@@ -3617,3 +3617,87 @@ Expected next marker:
   RUNNER_FAILED`.
 - If the runner reaches a normal result, the normal final `README.md` remains
   authoritative and the fallback trap must not overwrite it.
+
+2026-05-29 attempt95 userspace handoff stage marker:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built, packaged, and locally verified; not flashed because
+  the device/tunnel was disconnected before runtime testing.
+
+Hypothesis:
+
+- HYPOTHESIS: the current bootlogo hang may already reach the kernel-to-init
+  exec boundary, but prior captures cannot prove that because the last
+  persistent stage remained one of the `exec_*_init` markers and the
+  "userspace reached" message was only a printk that can be lost when ADB is
+  unavailable. A dedicated persistent stage at `frgmark_userspace_reached()`
+  will distinguish "kernel successfully execed init" from "still died before
+  userspace handoff" in the next recovery capture.
+
+Evidence:
+
+- FACT: attempt95 is packaged at
+  `/srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspace-stage-marker/`.
+- FACT: attempt95 boot image is
+  `/srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspace-stage-marker/boot-userspace-stage-marker-120s.img`.
+- FACT: attempt95 boot SHA-256 is
+  `03735556830075ee4328c39799a4f6b26e21c779fcbf07feffaf2c5b4b66245e`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, no-BCB no-loop gate, pstore config, serial
+  early console config, and ramoops DTB.
+- FACT: `verify-vmlinux-strings.txt` contains both `userspace_reached` and
+  `FRGmark: userspace reached`.
+- FACT: the decoder shell script maps stage `0x15` to `userspace_reached`, and
+  a stdin smoke test decoded `FRGmark stage=15` and `0x46524715` as
+  `userspace_reached`.
+- FACT: with no device attached on ADB port `15037`, `nx549j-run-latest.sh`
+  refuses to flash with `ERROR: target 30785d1a is not online through ADB,
+  state=''`.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `FRGMARK_STAGE_USERSPACE_REACHED` as stage `0x15`.
+- `arch/arm64/kernel/frgmark.c`
+  - maps stage `0x15` to `userspace_reached`;
+  - calls `frgmark(FRGMARK_STAGE_USERSPACE_REACHED)` from
+    `frgmark_userspace_reached()` before the existing recovery timeout cleanup.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes stage `0x15` as `userspace_reached`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - shows stage `0x15` as `userspace_reached` in the debug page marker table.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the `userspace_reached` string in packaged vmlinux verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt95.sh`
+  - verifies the attempt95 boot image SHA and invokes the BCB/recovery runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - now delegates to attempt95.
+- `/srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspace-stage-marker/README.md`
+  - records offline status, SHA, expected evidence, and next flash action.
+
+Expected next marker:
+
+- If the target 4.9 kernel reaches Android init exec, the next recovery capture
+  should decode `0x46524715` or `stage=0x15` as
+  `name=userspace_reached`.
+- If stage `0x15` is absent, the failure remains before userspace handoff and
+  the previous highest persistent marker is the active boundary.
+
+Rollback condition:
+
+- Revert attempt95 if runtime shows that adding `frgmark()` inside
+  `frgmark_userspace_reached()` prevents BCB cleanup, leaves the device stuck
+  in recovery after a successful userspace handoff, or otherwise changes boot
+  behavior before the userspace boundary. In that case return to attempt94 and
+  keep the userspace-boundary evidence gap open.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/kernel/nubia/msm8953
+env PATH=/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin:/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/bin:/home/n8n/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin CCACHE_DIR=/srv/forge/android/ccache ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- HOST_EXTRACFLAGS=-I/usr/include/node make O=/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/out/target/product/nx549j/obj/KERNEL_OBJ Image.gz-dtb -j4 HOSTLOADLIBES_sign-file=/usr/lib/x86_64-linux-gnu/libcrypto.so.3 HOSTLOADLIBES_extract-cert=/usr/lib/x86_64-linux-gnu/libcrypto.so.3
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspace-stage-marker boot-userspace-stage-marker-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt95-20260529-userspace-stage-marker/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt95.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+printf 'FRGmark stage=15\n0x46524715\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
+```

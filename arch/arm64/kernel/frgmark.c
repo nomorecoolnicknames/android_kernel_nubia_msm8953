@@ -148,6 +148,8 @@ static const char *frgmark_stage_name(u8 stage)
 		return "exec_fallback_init";
 	case FRGMARK_STAGE_CONSOLE_INIT_DONE:
 		return "console_init_done";
+	case FRGMARK_STAGE_USERSPACE_REACHED:
+		return "userspace_reached";
 	case FRGMARK_STAGE_HEAD_ENTRY:
 		return "head_entry";
 	case FRGMARK_STAGE_HEAD_ARGS_PRESERVED:
@@ -879,10 +881,14 @@ void __init frgmark_recovery_timeout_arm(void)
 
 void frgmark_userspace_reached(void)
 {
-	if (!frg_recovery_timeout_armed || frg_recovery_userspace_done)
+	if (frg_recovery_userspace_done)
 		return;
 
 	frg_recovery_userspace_done = true;
+	frgmark(FRGMARK_STAGE_USERSPACE_REACHED);
+	if (!frg_recovery_timeout_armed)
+		return;
+
 	if (frg_recovery_timeout_timer_armed)
 		del_timer_sync(&frg_recovery_timeout_timer);
 	cancel_delayed_work_sync(&frg_recovery_selector_work);
