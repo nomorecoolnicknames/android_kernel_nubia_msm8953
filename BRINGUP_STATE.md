@@ -4087,7 +4087,7 @@ Evidence:
   verifier rerun.
 - FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
   SHA-256
-  `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
+  `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
 
 Files changed:
 
@@ -4151,7 +4151,7 @@ Files changed:
   - preserves the updated wait helper and snapshot README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
+    `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
 
 Expected next action:
 
@@ -4206,7 +4206,7 @@ Files changed:
     README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
+    `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
 
 Expected next action:
 
@@ -4220,3 +4220,59 @@ Rollback condition:
 - Revert if the helper selects a run that already reached userspace/automatic
   recovery, or if it starts the finish helper while the target is missing or in
   normal Android `device` state.
+
+2026-05-29 attempt97 one-command unattended runner:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side orchestration wrapper only; not flashed because
+  ADB port `15037` currently lists no devices.
+
+Evidence:
+
+- FACT: `scripts/nx549j-run-attempt97-unattended.sh` invokes the existing
+  recovery wait + flash runner first, preserving the normal attempt97 flashing
+  path and boot-image SHA check.
+- FACT: the wrapper switches to
+  `scripts/nx549j-wait-recovery-and-finish-latest.sh` only when the run helper
+  exits with status `2`, the current flash-runner code for
+  `automatic-recovery-timeout`.
+- FACT: no-device smoke with `WAIT_ATTACH_SECONDS=2 POLL_SECONDS=1` exited
+  status `1`, wrote an unattended log, did not create a finish wait log, and
+  did not flash because the initial recovery wait failed.
+- FACT: synthetic run helper exit `2` started the finish helper and returned
+  success when the finish helper returned success.
+- FACT: synthetic run helper exit `0` returned success without starting the
+  finish helper.
+- FACT: `bash -n scripts/nx549j-run-attempt97-unattended.sh` passed.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passed after updating the release-local runner snapshot.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passed.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt97-unattended.sh`
+  - new one-command orchestration wrapper for recovery wait, flash, timeout
+    classification, and finish wait handoff.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the unattended runner and documents it in the snapshot README.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - records updated runner snapshot manifest checksum
+    `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
+
+Expected next action:
+
+- For an unattended bench run, use
+  `/srv/forge/android/nx549j/scripts/nx549j-run-attempt97-unattended.sh`.
+  It should either finish after userspace/automatic recovery evidence, or
+  keep waiting for the post-timeout manual recovery entry and then collect
+  recovery-readable markers and restore `misc`.
+
+Rollback condition:
+
+- Revert if the wrapper starts finish on any non-timeout run status, hides the
+  original flash runner exit code, or starts flashing while the target is
+  missing/non-recovery. Current synthetic tests cover all three control-flow
+  branches.
