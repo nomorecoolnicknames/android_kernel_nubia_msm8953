@@ -4321,3 +4321,40 @@ Rollback condition:
 
 - Revert or retarget this alias if a newer attempt supersedes attempt97 or if
   the wrapper stops preserving the underlying attempt runner exit behavior.
+
+2026-05-29 attempt97 latest unattended Windows ADB wait:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: attempted stable unattended runner against the Windows
+  reverse ADB tunnel; no flash occurred because the target serial never
+  appeared.
+
+Evidence:
+
+- FACT: `ss -ltnp | rg ':15037\b'` showed a listener on `127.0.0.1:15037`,
+  so the reverse tunnel endpoint existed on this host.
+- FACT: `ADB_SERVER_SOCKET=tcp:127.0.0.1:15037 adb devices -l` listed no
+  attached devices before and after the run.
+- FACT: ran `WAIT_ATTACH_SECONDS=300 POLL_SECONDS=2
+  scripts/nx549j-run-unattended-latest.sh`.
+- FACT: unattended log
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/wait-logs/unattended-20260529-231800.log`
+  records start at `2026-05-29T23:18:00Z`, helper exit status `1`, and
+  `unattended-result run-failed-before-timeout status=1`.
+- FACT: recovery wait log
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/wait-logs/wait-recovery-20260529-231800.log`
+  records only `target-not-ready serial=30785d1a state='missing'`, then
+  `wait-timeout serial=30785d1a timeout=300s` at `2026-05-29T23:23:00Z`.
+- FACT: because the run never reached `recovery-online`, it did not enter
+  `nx549j-run-latest.sh`, did not call `require_recovery_target`, and did not
+  write boot or misc.
+
+Expected next action:
+
+- On the Windows USB host, confirm `adb devices -l` shows serial `30785d1a`
+  in `recovery`, then keep the reverse tunnel open. From this host rerun
+  `/srv/forge/android/nx549j/scripts/nx549j-run-unattended-latest.sh`.
+
+Rollback condition:
+
+- None; this is an evidence-only wait run with no device writes.
