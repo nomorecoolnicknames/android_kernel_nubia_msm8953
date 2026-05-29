@@ -4151,7 +4151,7 @@ Files changed:
   - preserves the updated wait helper and snapshot README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `106c76e905db0ba63149aa3429488de7a86a3747b921a01ad8765cd3b8f04a9b`.
+    `2bf4a95e34eb3b6058260b5d8307e859dd76f49727f21a01e48fa5c5efde93db`.
 
 Expected next action:
 
@@ -4358,3 +4358,47 @@ Expected next action:
 Rollback condition:
 
 - None; this is an evidence-only wait run with no device writes.
+
+2026-05-29 attempt97 reverse ADB preflight helper:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side reverse ADB preflight only; not flashed because
+  ADB port `15037` currently lists no devices.
+
+Evidence:
+
+- FACT: added `scripts/nx549j-check-reverse-adb.sh`; it never writes to the
+  phone and only runs listener/ADB visibility checks.
+- FACT: current reverse tunnel check wrote
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/reverse-adb-check-20260529-232651/`
+  with `verdict=NO_ADB_DEVICES`, `listener=present`, `adb_status=ok`,
+  `device_count=0`, and empty `target_state`.
+- FACT: no-listener smoke with `ADB_PORT=15038` returned status `2` and
+  `verdict=NO_REVERSE_LISTENER`, `listener=missing`, `adb_status=failed`,
+  `device_count=0`.
+- FACT: `bash -n scripts/nx549j-check-reverse-adb.sh` passed.
+- FACT: release-local runner snapshot and top-level `SHA256SUMS` were updated
+  with runner snapshot manifest checksum
+  `2bf4a95e34eb3b6058260b5d8307e859dd76f49727f21a01e48fa5c5efde93db`.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-check-reverse-adb.sh`
+  - new preflight helper for Windows/reverse ADB readiness.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the reverse ADB checker and documents it in the snapshot README.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/README.md`
+  - documents the preflight helper before starting a flash run.
+
+Expected next action:
+
+- Run `/srv/forge/android/nx549j/scripts/nx549j-check-reverse-adb.sh
+  <out-dir>` before the next unattended flash attempt. Proceed to
+  `nx549j-run-unattended-latest.sh` only when the preflight verdict is
+  `TARGET_RECOVERY_READY`.
+
+Rollback condition:
+
+- Revert if the helper misclassifies a visible recovery device or introduces
+  any device-write operation. Current implementation does not call `adb shell`
+  or write to any block device.
