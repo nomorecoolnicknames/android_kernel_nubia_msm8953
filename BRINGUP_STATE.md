@@ -4008,3 +4008,50 @@ Rollback condition:
 - Revert only if a known-good recovery exposes ADB state as `device` while
   still allowing recovery partition writes; current evidence and previous
   scripts treat `recovery` as the safe block-write state.
+
+2026-05-29 attempt97 runner snapshot:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: release packaging/evidence snapshot only; not flashed because
+  no device is attached on ADB port `15037`.
+
+Evidence:
+
+- FACT: `ADB_SERVER_SOCKET=tcp:127.0.0.1:15037 adb devices -l` listed no
+  devices.
+- FACT: `scripts/nx549j-run-latest.sh` delegates to
+  `scripts/nx549j-run-attempt97.sh`, which verifies boot SHA
+  `a0a40ab9539b4793ae772fa7a1f02793163fae653f9ef83805cbe51cf4666893`.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passes and now includes `RUNNER_SNAPSHOT_SHA256SUMS`.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passes for the copied runner scripts and snapshot README.
+- FACT: `bash -n runner-snapshot-20260529/*.sh` passes.
+- FACT: `scripts/nx549j-verify-release-artifact.sh
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout
+  boot-userspace-ack-timeout-120s.img` still reports PASS.
+
+Files changed:
+
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the current host-side scripts expected for attempt97 flashing and
+    recovery/userspace evidence collection.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  - records checksums for the copied runner scripts.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - now includes the runner snapshot manifest checksum.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/README.md`
+  - documents the runner snapshot.
+
+Expected next action:
+
+- Use live scripts from `/srv/forge/android/nx549j/scripts/` for the actual
+  attempt. Use the runner snapshot to audit exact intended behavior if the live
+  scripts drift before the phone is reconnected.
+
+Rollback condition:
+
+- Remove the snapshot only if a newer attempt supersedes attempt97 or the live
+  runner changes enough to require a new release-local snapshot.
