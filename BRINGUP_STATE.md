@@ -3446,3 +3446,46 @@ Expected next marker:
   automatic-recovery proof rules still apply.
 - If neither state appears, the run remains a timeout and should be finished
   after manual recovery using `nx549j-finish-flash-timeout.sh`.
+
+2026-05-29 userspace restore safety fix:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script behavior checked offline; no device available.
+
+Problem fixed:
+
+After Task 26, the runner could correctly detect ADB `device` as a userspace
+hit, but the userspace branch still called `restore_misc` as a hard
+requirement. Normal Android ADB may not have root/block write access, so a real
+userspace success could be reported as a script failure only because misc
+restore failed. That would hide the primary goal signal.
+
+Files changed outside the kernel git repository:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - wraps userspace misc restore in a subshell so `restore_misc` failure is
+    recorded without aborting the userspace-hit result;
+  - writes `after-userspace/restore-optional-status.txt` when restore fails.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - reports `Misc restore: CHECK_USERSPACE_RESTORE_LOGS` when the userspace
+    branch reached Android but optional misc restore failed.
+
+Evidence:
+
+- FACT: `bash -n` passed for `nx549j-bcb-lib.sh`,
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-latest.sh`, and
+  `nx549j-run-attempt94.sh`.
+- FACT: a synthetic userspace summary fixture with
+  `Userspace misc restore: failed-see-after-userspace-restore-logs` produced
+  `Recovery result: USERSPACE`, `Target marker evidence: PRESENT`, and
+  `Misc restore: CHECK_USERSPACE_RESTORE_LOGS`.
+- FACT: with no device attached, `nx549j-run-latest.sh` still refuses to flash:
+  `ERROR: target 30785d1a is not online through ADB, state=''`.
+
+Expected next marker:
+
+- If attempt94 reaches Android but userspace ADB cannot write `misc`, the
+  runtime `SUMMARY.md` should still report `USERSPACE` and point at
+  `after-userspace/restore-optional-status.txt` instead of exiting before the
+  result is written.
