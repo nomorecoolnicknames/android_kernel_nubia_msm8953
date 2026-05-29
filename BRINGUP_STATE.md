@@ -4055,3 +4055,62 @@ Rollback condition:
 
 - Remove the snapshot only if a newer attempt supersedes attempt97 or the live
   runner changes enough to require a new release-local snapshot.
+
+2026-05-29 attempt97 decoded-stage summary verdict:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side summarizer/snapshot update only; not flashed
+  because the phone/tunnel is unavailable.
+
+Evidence:
+
+- FACT: `scripts/nx549j-summarize-flash-run.sh` now reads the last
+  `stage=0x.. name=..` line from `marker-decode.txt`.
+- FACT: synthetic summary evidence classified `0x16
+  recovery_timeout_reboot` as `RECOVERY_TIMEOUT_REBOOT`.
+- FACT: synthetic summary evidence classified `0x17 userspace_ack` as
+  `USERSPACE_ACK`.
+- FACT: `bash -n scripts/nx549j-summarize-flash-run.sh` passed.
+- FACT: `bash -n runner-snapshot-20260529/*.sh` passed for the release-local
+  runner snapshot.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passed.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passed.
+- FACT: latest release verifier wrote
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/VERIFY.md`
+  at `2026-05-29T22:51:59Z` with PASS for checksums, cmdline, required
+  symbols, required marker strings, ramdisk userspace ACK, no-BCB no-loop
+  gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
+  SHA-256
+  `f76b46dee3189ce2b4e96ef9ca8aa760e35bb8b13895c26dc2546422a98223ac`.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - adds `Last decoded marker` and `Decoded FRGmark` summary fields.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/nx549j-summarize-flash-run.sh`
+  - preserves the same summarizer behavior in the release snapshot.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - records the updated runner snapshot manifest hash.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/README.md`
+  - documents decoded marker verdicts and the current local verification
+    boundary.
+
+Expected next action:
+
+- When the phone is reconnected in recovery, run
+  `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-run-latest.sh`
+  or direct `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`.
+  If the phone/tunnel remains disconnected, report the state as
+  "artifact ready, runtime not tested" rather than claiming device success.
+
+Rollback condition:
+
+- Revert this summary-only update if real capture output uses a different
+  decoder line format and the generated `SUMMARY.md` loses the raw evidence
+  paths or fails before writing the summary. It does not affect boot image
+  contents.
