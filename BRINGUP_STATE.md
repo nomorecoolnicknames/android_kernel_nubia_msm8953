@@ -4079,11 +4079,12 @@ Evidence:
 - FACT: `sha256sum -c
   /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
   passed.
-- FACT: latest release verifier wrote
+- FACT: latest release verifier writes
   `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/VERIFY.md`
-  at `2026-05-29T22:55:22Z` with PASS for checksums, cmdline, required
-  symbols, required marker strings, ramdisk userspace ACK, no-BCB no-loop
-  gate, pstore config, serial early console config, and ramoops DTB.
+  with PASS for checksums, cmdline, required symbols, required marker strings,
+  ramdisk userspace ACK, no-BCB no-loop gate, pstore config, serial early
+  console config, and ramoops DTB. The file timestamp changes on every
+  verifier rerun.
 - FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
   SHA-256
   `f76b46dee3189ce2b4e96ef9ca8aa760e35bb8b13895c26dc2546422a98223ac`.
