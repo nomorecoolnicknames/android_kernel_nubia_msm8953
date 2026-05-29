@@ -2947,3 +2947,82 @@ Host-side summary verification:
   - `BCB stage stamp: PRESENT`
   - `Last stage: 0x55`
   - `Last stage name: initcall_fs_done`
+
+2026-05-29 attempt91 serial earlycon repair:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and packaged offline only; it has not been flashed or
+  runtime-proven because the target is expected to be disconnected from the
+  forwarded ADB endpoint.
+
+Hypothesis: the existing command line requested
+`earlycon=msm_hsl_uart,0x78af000`, but this 4.9 tree does not declare an
+`msm_hsl_uart` early console. Enabling the source-supported MSM serial console
+path and using `earlycon=msm_serial_dm,0x78af000,115200n8` should make the
+earliest UARTDM printk path available if the board exposes that UART. This is
+diagnostic only; it does not by itself prove or fix the bootlogo hang.
+
+Evidence:
+
+- FACT: `drivers/tty/serial/msm_serial.c` declares
+  `OF_EARLYCON_DECLARE(msm_serial_dm, "qcom,msm-uartdm", ...)`.
+- FACT: `drivers/tty/serial/Kconfig` makes `CONFIG_SERIAL_MSM_CONSOLE` select
+  `CONFIG_SERIAL_EARLYCON`.
+- FACT: current `msm8953.dtsi` defines `blsp1_uart0` at `0x78af000` with
+  compatible `"qcom,msm-uartdm-v1.4", "qcom,msm-uartdm"`.
+- FACT: attempt91 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt91-20260529-serial-earlycon/boot-serial-earlycon-120s.img`.
+- FACT: attempt91 boot SHA-256:
+  `a60ab2a60c6a2bb48008bddd1a07243f3bd9ea7e4be9fcb16965c365af33b9f9`.
+- FACT: `VERIFY.md` reports SHA256SUMS, boot cmdline, required symbols,
+  marker strings, pstore config, serial early console config, and ramoops DTB
+  checks as PASS.
+- INFERENCE: previous `earlycon=msm_hsl_uart,0x78af000` was likely inert in
+  this 4.9 tree because no matching earlycon id is declared in the source.
+
+Files changed:
+
+- `arch/arm64/configs/lineageos_nx549j_defconfig`
+  - enables `CONFIG_SERIAL_MSM=y` and `CONFIG_SERIAL_MSM_CONSOLE=y`.
+- `/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/device/nubia/nx549j/BoardConfig.mk`
+  - replaces `earlycon=msm_hsl_uart,0x78af000` with
+    `earlycon=msm_serial_dm,0x78af000,115200n8`.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - verifies the new earlycon cmdline token and serial early console config.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt91.sh`
+  - adds a SHA-gated runner for the attempt91 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt91.
+- `/srv/forge/work/nx549j-preserve/release-attempt91-20260529-serial-earlycon/README.md`
+  - records artifact status, claim boundary, verification, and next device
+    step.
+
+Expected next marker:
+
+- If UART is wired and readable, early printk should use the source-supported
+  `msm_serial_dm` earlycon path instead of silently failing to match the old
+  `msm_hsl_uart` token.
+- Runtime verdict still depends on the normal capture stack:
+  exact flashed SHA, boot partition prefix SHA, automatic/manual recovery
+  classification, pstore/misc evidence, and fresh target markers.
+
+Rollback condition:
+
+- Revert this diagnostic if the serial driver introduction causes a new build
+  or runtime regression unrelated to capture; the change is not required for
+  storage, BCB, or pstore marker writes.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt91-20260529-serial-earlycon boot-serial-earlycon-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt91-20260529-serial-earlycon/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt91.sh
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh
+bash -n /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+```
