@@ -3361,3 +3361,37 @@ mka bootimage -j4
 sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt94-20260529-early-bcb-kick-kmsgdump/SHA256SUMS
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt94.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 ```
+
+2026-05-29 continuation audit after attempt94 packaging:
+
+- Patch category: DIAGNOSTIC evidence audit.
+- Runtime status: no device available; no flash attempted.
+
+Evidence:
+
+- FACT: `adb devices -l`, `adb -H 127.0.0.1 -P 15037 devices -l`, and
+  `adb -H 127.0.0.1 -P 5037 devices -l` all returned empty device lists.
+- FACT: `ss -ltnp` still showed listeners on `127.0.0.1:15037` and
+  `127.0.0.1:5037`, so the immediate blocker is the absent device, not a
+  missing local ADB listener.
+- FACT: `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh` currently
+  exits with `ERROR: target 30785d1a is not online through ADB, state=''`
+  when no target is attached.
+- FACT: old NX549J recovery evidence still supports the target-kernel BCB
+  device tuple used by attempt94:
+  `/srv/forge/work/nx549j-preserve/misc-bcb/test-aosp-offset0-20260529-131128/by-name.txt`
+  contains `misc -> /dev/block/mmcblk0p28`, and
+  `/srv/forge/work/nx549j-preserve/misc-bcb/test-aosp-offset0-20260529-131128/after-recovery/proc-partitions.txt`
+  contains `179 28 mmcblk0p28`.
+- FACT: the same old BCB selector run proved `aosp-offset0` recovery by writing
+  `boot-recovery` at misc page 0, normal-rebooting, observing recovery without
+  button input, and restoring `misc`.
+
+Interpretation:
+
+- attempt94 is still the correct next flash candidate, because its BCB devt
+  points at the proven `misc` partition and its runner refuses to act on the
+  wrong or absent ADB target.
+- Goal completion remains unproven: there is no current exact flashed-image
+  identity, no current automatic recovery proof, and no fresh target-kernel
+  pstore/BCB evidence from attempt94.
