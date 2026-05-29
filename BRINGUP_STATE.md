@@ -4087,7 +4087,7 @@ Evidence:
   verifier rerun.
 - FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
   SHA-256
-  `67cd1d7c474035c20b26a9cc1f4271651d1023c0f58f09695530e74218527a3a`.
+  `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
 
 Files changed:
 
@@ -4151,7 +4151,7 @@ Files changed:
   - preserves the updated wait helper and snapshot README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `67cd1d7c474035c20b26a9cc1f4271651d1023c0f58f09695530e74218527a3a`.
+    `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
 
 Expected next action:
 
@@ -4165,3 +4165,58 @@ Rollback condition:
 - Revert if the persistent logging wrapper changes the flash runner exit code
   or starts flashing while the target is missing/non-recovery. The current
   no-device smoke proves the missing-target path does not flash.
+
+2026-05-29 attempt97 unattended finish wait helper:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side post-timeout helper only; not flashed because ADB
+  port `15037` currently lists no devices.
+
+Evidence:
+
+- FACT: `scripts/nx549j-wait-recovery-and-finish-latest.sh` was added to wait
+  for exact serial `30785d1a` in recovery, then run
+  `scripts/nx549j-finish-flash-timeout.sh` for a timed-out attempt97
+  flash-run directory.
+- FACT: if no `flash-run-dir` is given, the helper selects the newest
+  attempt97 `runtime/flash-boot-bcb-*` directory with `misc-backup.img` whose
+  README result is empty, `automatic-recovery-timeout`, or
+  `runner-failed-before-final-summary`.
+- FACT: a no-device smoke with synthetic timeout directory
+  `/tmp/nx549j-finish-wait.HBKb2s/runtime/flash-boot-bcb-test` exited with
+  status `1`, wrote persistent wait log
+  `/tmp/nx549j-finish-wait.HBKb2s/wait-finish.log`, and did not call the
+  finish helper because the target remained missing.
+- FACT: a synthetic run whose README reported
+  `userspace-observed-within-wait-window` was not selected for finish.
+- FACT: `bash -n scripts/nx549j-wait-recovery-and-finish-latest.sh` passed.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passed after updating the release-local runner snapshot.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passed.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-finish-latest.sh`
+  - new unattended helper for the manual-recovery finish path after timeout.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the new finish wait helper and documents it in the snapshot
+    README.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - records updated runner snapshot manifest checksum
+    `2f5b427dfe406131fa4215afeb2360a126f44c13f9063c33c487188a3d83ebff`.
+
+Expected next action:
+
+- If a flash run times out and the phone is later returned to recovery, run
+  `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-finish-latest.sh`
+  without arguments to finish the newest timed-out attempt97 run, or pass the
+  exact flash-run directory to avoid ambiguity.
+
+Rollback condition:
+
+- Revert if the helper selects a run that already reached userspace/automatic
+  recovery, or if it starts the finish helper while the target is missing or in
+  normal Android `device` state.
