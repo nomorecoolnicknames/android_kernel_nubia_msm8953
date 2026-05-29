@@ -4081,7 +4081,7 @@ Evidence:
   passed.
 - FACT: latest release verifier wrote
   `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/VERIFY.md`
-  at `2026-05-29T22:51:59Z` with PASS for checksums, cmdline, required
+  at `2026-05-29T22:55:22Z` with PASS for checksums, cmdline, required
   symbols, required marker strings, ramdisk userspace ACK, no-BCB no-loop
   gate, pstore config, serial early console config, and ramoops DTB.
 - FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
