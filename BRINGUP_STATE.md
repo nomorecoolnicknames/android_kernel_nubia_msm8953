@@ -4087,7 +4087,7 @@ Evidence:
   verifier rerun.
 - FACT: top-level release `SHA256SUMS` now records runner snapshot manifest
   SHA-256
-  `f76b46dee3189ce2b4e96ef9ca8aa760e35bb8b13895c26dc2546422a98223ac`.
+  `67cd1d7c474035c20b26a9cc1f4271651d1023c0f58f09695530e74218527a3a`.
 
 Files changed:
 
@@ -4115,3 +4115,53 @@ Rollback condition:
   decoder line format and the generated `SUMMARY.md` loses the raw evidence
   paths or fails before writing the summary. It does not affect boot image
   contents.
+
+2026-05-29 attempt97 unattended wait log:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side wait/capture wrapper update only; not flashed
+  because ADB port `15037` currently lists no devices.
+
+Evidence:
+
+- FACT: `WAIT_ATTACH_SECONDS=2 POLL_SECONDS=1
+  WAIT_LOG=/tmp/nx549j-wait-log.N7t5fp/wait.log
+  scripts/nx549j-wait-recovery-and-run-latest.sh` exited with status `1`
+  after logging two `state='missing'` polls and `wait-timeout`; no flash
+  runner handoff occurred.
+- FACT: the same smoke wrote timestamped lines to the persistent `WAIT_LOG`
+  file, so unattended waiting leaves evidence even if terminal output is lost.
+- FACT: `bash -n scripts/nx549j-wait-recovery-and-run-latest.sh` passed.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passed after updating the release-local runner snapshot.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passed.
+- FACT: `ADB_SERVER_SOCKET=tcp:127.0.0.1:15037 adb devices -l` listed no
+  attached devices, so no runtime flash/capture was attempted.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-run-latest.sh`
+  - writes wait-state lines to `$WAIT_LOG`, defaulting under attempt97
+    `runtime/wait-logs/`, and tees the eventual runner output into the same
+    file while preserving the runner exit code.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the updated wait helper and snapshot README.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - records updated runner snapshot manifest checksum
+    `67cd1d7c474035c20b26a9cc1f4271651d1023c0f58f09695530e74218527a3a`.
+
+Expected next action:
+
+- Leave `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-run-latest.sh`
+  running when the phone may be reconnected later in recovery. If it never
+  sees serial `30785d1a` in recovery, it should only accumulate wait evidence
+  and must not flash.
+
+Rollback condition:
+
+- Revert if the persistent logging wrapper changes the flash runner exit code
+  or starts flashing while the target is missing/non-recovery. The current
+  no-device smoke proves the missing-target path does not flash.
