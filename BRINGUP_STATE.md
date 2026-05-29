@@ -2866,3 +2866,69 @@ sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stag
 cat /srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/verify-bcb-stage-stamp.txt
 bash -n /srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh /srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh /srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh /srv/forge/android/nx549j/scripts/nx549j-run-attempt89.sh
 ```
+
+2026-05-29 attempt90 early-stage BCB stamp:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and packaged offline only; it has not been flashed or
+  runtime-proven because the target is not attached.
+
+Hypothesis: attempt89's BCB stamp is the right recovery-readable fallback, but
+`frgmark_early()` wrote head/setup markers without updating `frg_last_stage`.
+If a BCB write ever happens before the normal `frgmark()` path has refreshed
+the variable, the BCB stamp could report stale stage `0x00` despite early
+markers having run. Updating `frg_last_stage` in `frgmark_early()` keeps the
+stamp coherent with the earliest marker path.
+
+Evidence:
+
+- FACT: `frgmark_early()` writes IMEM and ramoops records for early head/setup
+  stages.
+- FACT: before attempt90, only `frgmark()` and timeout marker helpers updated
+  `frg_last_stage`.
+- FACT: attempt90 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/boot-early-stage-bcb-stamp-120s.img`.
+- FACT: attempt90 boot SHA-256:
+  `8925e0e84acee9a1b1397ad7307902bfd09daaff991c0aa2137ec4c7881df2f5`.
+- FACT: `VERIFY.md` reports SHA256SUMS, boot cmdline, required symbols,
+  marker strings, pstore config, and ramoops DTB checks as PASS.
+- FACT: `verify-bcb-stage-stamp.txt` confirms `FRGMARK-BCB-v1`,
+  `last_stage=0x%02x`, and `nx549j-frgmark-timeout` remain present in
+  `vmlinux`.
+
+Files changed:
+
+- `arch/arm64/kernel/frgmark.c`
+  - updates `frg_last_stage` at the start of `frgmark_early()`.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt90.sh`
+  - adds a SHA-gated runner for the attempt90 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt90.
+- `/srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/README.md`
+  - records artifact status, claim boundary, verification, and next device
+    step.
+
+Expected next marker:
+
+- If BCB is written after any early `frgmark_early()` stage but before a later
+  normal `frgmark()` stage, `misc-first-page-strings.txt` should report that
+  early stage instead of `last_stage=0x00`.
+
+Rollback condition:
+
+- Revert this diagnostic if it changes runtime behavior before any BCB write
+  evidence is produced; it should only update diagnostic state.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp boot-early-stage-bcb-stamp-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/SHA256SUMS
+cat /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/verify-bcb-stage-stamp.txt
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt90.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh
+```

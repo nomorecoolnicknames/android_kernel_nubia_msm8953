@@ -398,6 +398,8 @@ void __init frgmark_early(u8 stage)
 	void __iomem *imem;
 	void __iomem *ramoops;
 
+	frg_last_stage = stage;
+
 	imem = early_ioremap(FRG_IMEM_PA, FRG_IMEM_LEN);
 	if (imem) {
 		frgmark_write_imem_record(imem, stage);
