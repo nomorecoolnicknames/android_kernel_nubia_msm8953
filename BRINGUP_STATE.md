@@ -2725,6 +2725,11 @@ Files changed:
   - adds a SHA-gated runner for the attempt88 boot image.
 - `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
   - points the generic runner at attempt88.
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - now snapshots and clears recovery-visible pstore before reboot so any
+    after-recovery pstore files are fresh for the flashed target boot.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - reports the preboot pstore clear status in `SUMMARY.md`.
 - `/srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/README.md`
   - records artifact status, claim boundary, verification, and next device
     step.
@@ -2766,4 +2771,6 @@ mka bootimage -j4
 /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint boot-async-bcb-checkpoint-120s.img
 sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/SHA256SUMS
 cat /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpoint/verify-async-bcb-checkpoint.txt
+bash -n /srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh
+bash -n /srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh
 ```
