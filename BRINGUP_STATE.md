@@ -869,6 +869,57 @@ persistence path.
   disable the no-BCB forced reset and focus on why BCB/block storage never
   becomes writable before timeout.
 
+2026-05-29 attempt86 timer-safe no-BCB fallback:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and packaged; not flashed in this note.
+- Attempt86 artifact directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt86-20260529-timer-safe-no-bcb-fallback`.
+- Preferred test image:
+  `/srv/forge/work/nx549j-preserve/release-attempt86-20260529-timer-safe-no-bcb-fallback/boot-timer-safe-no-bcb-fallback-120s.img`.
+- Preferred image SHA-256:
+  `cbd808dbf40ae8e99c09ec6abbe71e1dd60f04c7e74e362397d69cbb0b2b8061`.
+- Identity:
+  - `Image.gz-dtb`: `0ad072d5d1b35942722fda363f45cb0f6e8dbe9b8fdb6a61e92e5382c9bfb1ea`
+  - `System.map`: `534a7a816088d2b7b7d1f0f2af02319dde2b5c186bad3ef11acce6e8ef7550cc`
+  - `vmlinux`: `a31a4ebfe4065cce71b0622f5442fe9b0930ea997bdb5b662c2dbf97f5e9599d`
+  - `kernel.config`: `d4e2488ffbe1bd0a42214c2668cdb6ecef12e485c0b7e652d213f5ad06eb4c68`
+  - `msm8953-mtp-nx549j.dtb`: `b4c5f2d03f3c9c23280936a01d40b0e8b477e49dc92228b0b49d34140be630f5`
+- Source change over attempt85:
+  - `arch/arm64/kernel/frgmark.c` now keeps QPNP PON restart-reason writes
+    out of the timer/softirq no-BCB fallback path.
+  - If the no-BCB fallback fires from delayed work, it still uses full
+    recovery selector priming, including IMEM and QPNP PON.
+  - If it fires from the timer callback, it refreshes only the IMEM recovery
+    selector before raw reset/watchdog, because the PMIC/SPMI-backed
+    `qpnp_pon_set_restart_reason()` path is not safe to call from timer
+    context.
+- Verification:
+  - `mka bootimage -j4`: passed in `01:39`.
+  - `scripts/nx549j-verify-release-artifact.sh`: passed and wrote
+    `VERIFY.md`.
+  - `sha256sum -c SHA256SUMS`: passed.
+  - Packed cmdline still contains `frgmark.recovery_timeout_sec=120`,
+    `frgmark.bcb_misc_devt=179:28`, and `initcall_debug`.
+- Expected next marker:
+  - Preferred command:
+    `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+    (currently delegates to `nx549j-run-attempt86.sh`).
+  - If recovery appears automatically, inspect
+    `runtime/flash-boot-bcb-*/SUMMARY.md`,
+    `runtime/flash-boot-bcb-*/boot-identity.env`,
+    `runtime/flash-boot-bcb-*/after-recovery/marker-grep.txt`, and
+    `runtime/flash-boot-bcb-*/after-recovery/marker-od.txt`.
+  - If automatic recovery times out and the user manually returns to recovery,
+    run
+    `/srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh <runtime/flash-boot-bcb-...>`.
+- Claim boundary: this still does not prove automatic recovery or userspace.
+  It only removes a context bug from the diagnostic no-BCB reset path and
+  packages the next image for flashing.
+- Rollback condition: if attempt86 behaves worse than attempt85 before any
+  marker evidence is captured, revert the attempt86 `frgmark.c` selector split
+  and compare timer/workqueue reset behavior with the matching boot SHA.
+
 2026-05-29 attempt65 recovery reboot with marker-before-reset:
 
 - Patch category: DIAGNOSTIC.

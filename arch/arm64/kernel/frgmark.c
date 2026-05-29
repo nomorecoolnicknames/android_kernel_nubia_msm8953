@@ -703,7 +703,10 @@ static void frgmark_no_bcb_fallback_reset(const char *reason, bool can_sleep)
 {
 	frg_recovery_timeout_done = true;
 	frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_NO_BCB_RESET);
-	frgmark_prime_recovery_selectors(reason);
+	if (can_sleep)
+		frgmark_prime_recovery_selectors(reason);
+	else
+		frgmark_prime_recovery_imem(reason);
 	pr_emerg("FRGmark: no-BCB fallback reset reason=%s timeout=%u grace=%u artifact=%s\n",
 		 reason ? reason : "unknown", frg_recovery_timeout_sec,
 		 FRG_RECOVERY_NO_BCB_GRACE_SEC, FRG_RECOVERY_TIMEOUT_ARTIFACT);
