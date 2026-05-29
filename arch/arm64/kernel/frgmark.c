@@ -12,9 +12,11 @@
 #include <linux/printk.h>
 #include <linux/export.h>
 #include <linux/frgmark.h>
+#include <linux/fs.h>
 #include <linux/input/qpnp-power-on.h>
 #include <linux/jiffies.h>
 #include <linux/notifier.h>
+#include <linux/proc_fs.h>
 #include <linux/nx549j_splashprobe.h>
 #include <linux/reboot.h>
 #include <linux/timer.h>
@@ -82,6 +84,7 @@ static bool frg_force_reset_armed;
 static bool frg_recovery_timeout_armed;
 static bool frg_recovery_bcb_work_armed;
 static bool frg_recovery_timeout_work_armed;
+static bool frg_recovery_userspace_exec_seen;
 static bool frg_recovery_userspace_done;
 static bool frg_force_panic_done;
 static bool frg_force_reset_done;
@@ -152,6 +155,8 @@ static const char *frgmark_stage_name(u8 stage)
 		return "userspace_reached";
 	case FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT:
 		return "recovery_timeout_reboot";
+	case FRGMARK_STAGE_USERSPACE_ACK:
+		return "userspace_ack";
 	case FRGMARK_STAGE_HEAD_ENTRY:
 		return "head_entry";
 	case FRGMARK_STAGE_HEAD_ARGS_PRESERVED:
@@ -885,11 +890,23 @@ void __init frgmark_recovery_timeout_arm(void)
 
 void frgmark_userspace_reached(void)
 {
+	if (frg_recovery_userspace_exec_seen)
+		return;
+
+	frg_recovery_userspace_exec_seen = true;
+	frgmark(FRGMARK_STAGE_USERSPACE_REACHED);
+	pr_emerg("FRGmark: userspace exec reached, waiting for userspace ack artifact=%s\n",
+		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+}
+EXPORT_SYMBOL(frgmark_userspace_reached);
+
+static void frgmark_userspace_ack(const char *reason)
+{
 	if (frg_recovery_userspace_done)
 		return;
 
 	frg_recovery_userspace_done = true;
-	frgmark(FRGMARK_STAGE_USERSPACE_REACHED);
+	frgmark(FRGMARK_STAGE_USERSPACE_ACK);
 	if (!frg_recovery_timeout_armed)
 		return;
 
@@ -899,12 +916,38 @@ void frgmark_userspace_reached(void)
 	if (frg_recovery_bcb_work_armed)
 		cancel_delayed_work_sync(&frg_recovery_bcb_work);
 	cancel_delayed_work_sync(&frg_recovery_timeout_work);
-	frgmark_clear_recovery_bcb("userspace-reached");
-	frgmark_clear_recovery_selectors("userspace-reached");
-	pr_emerg("FRGmark: userspace reached, recovery timeout disarmed artifact=%s\n",
-		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+	frgmark_clear_recovery_bcb("userspace-ack");
+	frgmark_clear_recovery_selectors("userspace-ack");
+	pr_emerg("FRGmark: userspace ack reason=%s, recovery timeout disarmed artifact=%s\n",
+		 reason ? reason : "unknown", FRG_RECOVERY_TIMEOUT_ARTIFACT);
 }
-EXPORT_SYMBOL(frgmark_userspace_reached);
+
+static ssize_t frgmark_userspace_ack_write(struct file *file,
+					   const char __user *user_buf,
+					   size_t count, loff_t *ppos)
+{
+	char buf[32];
+	ssize_t rc;
+
+	if (!count)
+		return 0;
+
+	if (count >= sizeof(buf))
+		count = sizeof(buf) - 1;
+
+	rc = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos,
+				    user_buf, count);
+	if (rc < 0)
+		return rc;
+	buf[rc] = '\0';
+	frgmark_userspace_ack(buf);
+	return rc;
+}
+
+static const struct file_operations frgmark_userspace_ack_fops = {
+	.write = frgmark_userspace_ack_write,
+	.llseek = no_llseek,
+};
 
 static void frgmark_maybe_force_reset(u8 stage)
 {
@@ -1018,11 +1061,17 @@ static void frgmark_heartbeat(struct work_struct *work)
 
 static int __init frgmark_late_init(void)
 {
+	struct proc_dir_entry *ack;
+
 	if (!frg_imem)
 		return 0;
 
 	if (frg_recovery_timeout_armed && frg_recovery_bcb_work_armed)
 		mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
+	ack = proc_create("frgmark_userspace_ack", 0220, NULL,
+			  &frgmark_userspace_ack_fops);
+	pr_emerg("FRGmark: userspace ack proc %s artifact=%s\n",
+		 ack ? "created" : "missing", FRG_RECOVERY_TIMEOUT_ARTIFACT);
 	INIT_DELAYED_WORK(&frg_heartbeat_work, frgmark_heartbeat);
 	schedule_delayed_work(&frg_heartbeat_work, 10 * HZ);
 	return 0;

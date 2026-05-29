@@ -3789,3 +3789,93 @@ sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt96-20260529-timeout-
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt96.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 printf 'FRGmark stage=16\n0x46524716\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
 ```
+
+2026-05-29 attempt97 boot-only userspace ACK timeout:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built, packaged, and locally verified; not flashed because no
+  device is attached on ADB port `15037`.
+
+Hypothesis:
+
+- HYPOTHESIS: attempt95/96 disarmed recovery timeout too early because
+  `frgmark_userspace_reached()` ran as soon as the kernel successfully execed
+  `/init`. If `/init` or first-stage mount then hangs before recovery-readable
+  logs or ADB, the device can sit at bootlogo without automatic fallback. The
+  timeout should remain armed until boot ramdisk userspace explicitly ACKs
+  progress after `DoFirstStageMount()`.
+
+Evidence:
+
+- FACT: attempt97 is packaged at
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/`.
+- FACT: attempt97 boot image is
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/boot-userspace-ack-timeout-120s.img`.
+- FACT: attempt97 boot SHA-256 is
+  `a0a40ab9539b4793ae772fa7a1f02793163fae653f9ef83805cbe51cf4666893`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk init userspace ACK, no-BCB no-loop
+  gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: `verify-ramdisk-init-ack.txt` contains `/proc/frgmark_userspace_ack`
+  and `first-stage-mounted` extracted from the boot image ramdisk `/init`.
+- FACT: the decoder shell script and debug page marker table map stage `0x17`
+  to `userspace_ack`, and a stdin smoke test decoded `FRGmark stage=17` and
+  `0x46524717` as `userspace_ack`.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `FRGMARK_STAGE_USERSPACE_ACK` as stage `0x17`.
+- `arch/arm64/kernel/frgmark.c`
+  - keeps recovery timeout armed after `frgmark_userspace_reached()`;
+  - exposes `/proc/frgmark_userspace_ack`;
+  - writes stage `0x17`, clears BCB/selectors, and cancels timeout work only
+    after userspace writes the ACK.
+- `system/core/init/first_stage_init.cpp`
+  - writes `first-stage-mounted` to `/proc/frgmark_userspace_ack` after
+    `DoFirstStageMount()` and before execing `/system/bin/init`.
+- `system/core/init/init.cpp`
+  - adds a later second-stage ACK action for full-ROM builds where
+    `/system/bin/init` is updated too.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes stage `0x17` as `userspace_ack`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - shows stage `0x17` as `userspace_ack` in the debug page marker table.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the kernel ACK symbol/string and verifies the boot ramdisk `/init`
+    contains the userspace ACK path/reason.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt97.sh`
+  - verifies the attempt97 boot image SHA and invokes the BCB/recovery runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - now delegates to attempt97.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/README.md`
+  - records offline status, SHA, expected marker interpretation, and next flash
+    action.
+
+Expected next marker:
+
+- `0x15 userspace_reached`: the kernel crossed into `/init`; timeout remains
+  armed and should still return to recovery if first-stage userspace hangs.
+- `0x16 recovery_timeout_reboot`: no userspace ACK happened before 120 seconds;
+  the kernel should select recovery and reset for evidence collection.
+- `0x17 userspace_ack`: boot ramdisk first-stage init reached the post-mount
+  handoff and disarmed the recovery timeout.
+
+Rollback condition:
+
+- Revert attempt97 if runtime shows that first-stage ACK fires too early for
+  useful automation, prevents recovery fallback during a real bootlogo hang, or
+  leaves recovery selectors uncleared after a successful boot. Return to
+  attempt96 for timeout-reset marker coverage without userspace ACK gating.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+source build/envsetup.sh && lunch lineage_nx549j-userdebug
+mka init_first_stage init bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout boot-userspace-ack-timeout-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt97.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+printf 'FRGmark stage=17\n0x46524717\n' | /home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh -
+```
