@@ -26,6 +26,32 @@
 #define FRGMARK_STAGE_EXEC_FALLBACK_INIT		0x13
 #define FRGMARK_STAGE_CONSOLE_INIT_DONE			0x14
 
+#define FRGMARK_STAGE_HEAD_ENTRY			0x70
+#define FRGMARK_STAGE_HEAD_ARGS_PRESERVED		0x71
+#define FRGMARK_STAGE_HEAD_EL2_DONE			0x72
+#define FRGMARK_STAGE_HEAD_PAGETABLES_DONE		0x73
+#define FRGMARK_STAGE_HEAD_CPU_SETUP_DONE		0x74
+#define FRGMARK_STAGE_HEAD_PRIMARY_SWITCH		0x75
+
+#define FRGMARK_STAGE_SETUP_EARLY_IOREMAP_READY	0x80
+#define FRGMARK_STAGE_SETUP_FDT_DONE			0x81
+#define FRGMARK_STAGE_SETUP_EARLY_PARAM_DONE		0x82
+#define FRGMARK_STAGE_SETUP_MEMBLOCK_DONE		0x83
+#define FRGMARK_STAGE_SETUP_PAGING_DONE		0x84
+#define FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET	0x85
+
+#define FRGMARK_STAGE_INITCALL_EARLY_DONE		0x50
+#define FRGMARK_STAGE_INITCALL_CORE_DONE		0x51
+#define FRGMARK_STAGE_INITCALL_POSTCORE_DONE		0x52
+#define FRGMARK_STAGE_INITCALL_ARCH_DONE		0x53
+#define FRGMARK_STAGE_INITCALL_SUBSYS_DONE		0x54
+#define FRGMARK_STAGE_INITCALL_FS_DONE			0x55
+#define FRGMARK_STAGE_INITCALL_DEVICE_DONE		0x56
+#define FRGMARK_STAGE_INITCALL_LATE_DONE		0x57
+#define FRGMARK_STAGE_INITCALL_LEVEL_BASE		FRGMARK_STAGE_INITCALL_EARLY_DONE
+#define FRGMARK_STAGE_RECOVERY_NO_BCB_GRACE		0x5e
+#define FRGMARK_STAGE_RECOVERY_NO_BCB_RESET		0x5f
+
 #define FRGMARK_STAGE_MSM_DRM_REGISTER_BEGIN		0x20
 #define FRGMARK_STAGE_MSM_DRM_REGISTER_DONE		0x21
 #define FRGMARK_STAGE_MSM_DRM_PROBE_BEGIN		0x22
@@ -49,9 +75,15 @@
 
 #ifdef CONFIG_ARM64
 void __init frgmark_init_iomap(void);
+void __init frgmark_early(u8 stage);
+void __init frgmark_recovery_timeout_arm(void);
+void frgmark_userspace_reached(void);
 void frgmark(u8 stage);
 #else
 static inline void frgmark_init_iomap(void) {}
+static inline void frgmark_early(u8 stage) {}
+static inline void frgmark_recovery_timeout_arm(void) {}
+static inline void frgmark_userspace_reached(void) {}
 static inline void frgmark(u8 stage) {}
 #endif
 

@@ -216,15 +216,83 @@ efi_header_end:
 	 *  x21        stext() .. start_kernel()  FDT pointer passed at boot in x0
 	 *  x23        stext() .. start_kernel()  physical misalignment/KASLR offset
 	 *  x28        __create_page_tables()     callee preserved temp register
-	 *  x19/x20    __primary_switch()         callee preserved temp registers
+ *  x19/x20    __primary_switch()         callee preserved temp registers
 	 */
+
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	.macro nx549j_head_stage_marker stage
+	movz	x9, #0x0040
+	movk	x9, #0x0860, lsl #16		// NX549J scratch IMEM
+	movz	w10, #0x5246
+	movk	w10, #0x4847, lsl #16		// "GHFR" marker word
+	str	w10, [x9]
+	movz	w10, #(0x4700 | (\stage & 0xff))
+	movk	w10, #0x4652, lsl #16		// 0x465247xx FRG stage
+	str	w10, [x9, #4]
+	str	w10, [x9, #(8 + (((\stage) & 0x1f) * 4))]
+
+	movz	x9, #0x0000
+	movk	x9, #0x9ff0, lsl #16		// ramoops record zone
+	movz	w10, #0x4244
+	movk	w10, #0x4347, lsl #16		// persistent_ram sig "DBGC"
+	str	w10, [x9]
+	str	wzr, [x9, #4]			// start = 0
+	movz	w10, #0x0200
+	str	w10, [x9, #8]			// old size = 512
+	movz	w10, #0x3d3d
+	movk	w10, #0x3d3d, lsl #16		// "===="
+	str	w10, [x9, #0x0c]
+	movz	w10, #0x2e30
+	movk	w10, #0x2d30, lsl #16		// "0.0-"
+	str	w10, [x9, #0x10]
+	movz	w10, #0x0a44
+	movk	w10, #0x5246, lsl #16		// "D\nFR"
+	str	w10, [x9, #0x14]
+	movz	w10, #0x4547
+	movk	w10, #0x4e0a, lsl #16		// "GE\nN"
+	str	w10, [x9, #0x18]
+	movz	w10, #0x3558
+	movk	w10, #0x3934, lsl #16		// "X549"
+	str	w10, [x9, #0x1c]
+	movz	w10, #0x204a
+	movk	w10, #0x6568, lsl #16		// "J he"
+	str	w10, [x9, #0x20]
+	movz	w10, #0x6461
+	movk	w10, #0x6d20, lsl #16		// "ad m"
+	str	w10, [x9, #0x24]
+	movz	w10, #0x7261
+	movk	w10, #0x656b, lsl #16		// "arke"
+	str	w10, [x9, #0x28]
+	movz	w10, #0x0a72			// "r\n"
+	str	w10, [x9, #0x2c]
+	movz	w10, #(0x4700 | (\stage & 0xff))
+	movk	w10, #0x4652, lsl #16
+	str	w10, [x9, #0x4c]		// latest stage
+	str	w10, [x9, #(0x8c + (((\stage) - 0x70) * 4))]
+	dsb	sy
+	isb
+	.endm
+#endif
+
 ENTRY(stext)
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	nx549j_head_stage_marker 0x70
+#endif
 	bl	preserve_boot_args
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	nx549j_head_stage_marker 0x71
+#endif
 	bl	el2_setup			// Drop to EL1, w0=cpu_boot_mode
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	nx549j_head_stage_marker 0x72
+#endif
 	adrp	x23, __PHYS_OFFSET
 	and	x23, x23, MIN_KIMG_ALIGN - 1	// KASLR offset, defaults to 0
 	bl	set_cpu_boot_mode_flag
 	bl	__create_page_tables
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	nx549j_head_stage_marker 0x73
+#endif
 	/*
 	 * The following calls CPU setup code, see arch/arm64/mm/proc.S for
 	 * details.
@@ -232,8 +300,90 @@ ENTRY(stext)
 	 * the TCR will have been set.
 	 */
 	bl	__cpu_setup			// initialise processor
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	nx549j_head_stage_marker 0x74
+	nx549j_head_stage_marker 0x75
+#endif
 	b	__primary_switch
 ENDPROC(stext)
+
+#ifdef CONFIG_MACH_NUBIA_NX549J
+/*
+ * NX549J DIAGNOSTIC: ask LK to boot recovery and reset as soon as LK enters
+ * the kernel image.
+ */
+ENTRY(nx549j_head_entry_recovery_reset)
+	movz	x9, #0x0040
+	movk	x9, #0x0860, lsl #16
+	movz	w10, #0x5246
+	movk	w10, #0x4847, lsl #16		// "GHFR" marker word
+	str	w10, [x9]
+	movz	w10, #0x0068
+	movk	w10, #0x4652, lsl #16		// FRG stage 0x68
+	str	w10, [x9, #4]
+
+	movz	x9, #0x065c
+	movk	x9, #0x0860, lsl #16		// qcom,msm-imem-restart_reason
+	movz	w10, #0x5502
+	movk	w10, #0x7766, lsl #16		// reboot recovery magic
+	str	w10, [x9]
+	dsb	sy
+	isb
+
+	movz	x9, #0xb000
+	movk	x9, #0x004a, lsl #16		// MSM PS_HOLD
+	str	wzr, [x9]
+	dsb	sy
+1:	wfe
+	b	1b
+ENDPROC(nx549j_head_entry_recovery_reset)
+
+/*
+ * NX549J DIAGNOSTIC: prove whether the MMU-off head path reaches the point
+ * after page-table creation and CPU setup, then ask LK to boot recovery.
+ */
+ENTRY(nx549j_head_post_cpu_setup_recovery_probe)
+	movz	x9, #0x0040
+	movk	x9, #0x0860, lsl #16
+	movz	w10, #0x5246
+	movk	w10, #0x4847, lsl #16		// "GHFR" marker word
+	str	w10, [x9]
+	movz	w10, #0x0067
+	movk	w10, #0x4652, lsl #16		// FRG stage 0x67
+	str	w10, [x9, #4]
+
+	movz	x9, #0x065c
+	movk	x9, #0x0860, lsl #16		// qcom,msm-imem-restart_reason
+	movz	w10, #0x5502
+	movk	w10, #0x7766, lsl #16		// reboot recovery magic
+	str	w10, [x9]
+
+	movz	x9, #0x1000
+	movk	x9, #0x9000, lsl #16
+	movz	w10, #0x00ff
+	movk	w10, #0x00ff, lsl #16		// high-contrast head-path fill
+	movz	x11, #0x0000
+	movk	x11, #0x0008, lsl #16		// 512 KiB prefix
+1:	str	w10, [x9], #4
+	subs	x11, x11, #4
+	b.ne	1b
+
+	movz	x11, #0xffff
+	movk	x11, #0x001f, lsl #16
+2:	subs	x11, x11, #1
+	b.ne	2b
+
+	dsb	sy
+	isb
+
+	movz	x9, #0xb000
+	movk	x9, #0x004a, lsl #16		// MSM PS_HOLD
+	str	wzr, [x9]
+	dsb	sy
+3:	wfe
+	b	3b
+ENDPROC(nx549j_head_post_cpu_setup_recovery_probe)
+#endif
 
 /*
  * Preserve the arguments passed by the bootloader in x0 .. x3

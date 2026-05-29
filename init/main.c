@@ -62,6 +62,7 @@
 #include <linux/sched.h>
 #include <linux/signal.h>
 #include <linux/idr.h>
+#include <linux/nx549j_splashprobe.h>
 #include <linux/kgdb.h>
 #include <linux/ftrace.h>
 #include <linux/async.h>
@@ -502,6 +503,7 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_START_KERNEL_AFTER_SETUP_ARCH);
 	frgmark_init_iomap();
 	frgmark(FRGMARK_STAGE_SETUP_ARCH_DONE);
 	/*
@@ -588,6 +590,7 @@ asmlinkage __visible void __init start_kernel(void)
 	time_init();
 	sched_clock_postinit();
 	frgmark(FRGMARK_STAGE_TIME_INIT_DONE);
+	frgmark_recovery_timeout_arm();
 	printk_nmi_init();
 	perf_event_init();
 	profile_init();
@@ -869,8 +872,10 @@ static void __init do_initcalls(void)
 {
 	int level;
 
-	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++)
+	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++) {
 		do_initcall_level(level);
+		frgmark(FRGMARK_STAGE_INITCALL_LEVEL_BASE + level);
+	}
 }
 
 /*
@@ -981,8 +986,10 @@ static int __ref kernel_init(void *unused)
 	if (ramdisk_execute_command) {
 		frgmark(FRGMARK_STAGE_EXEC_RAMDISK_INIT);
 		ret = run_init_process(ramdisk_execute_command);
-		if (!ret)
+		if (!ret) {
+			frgmark_userspace_reached();
 			return 0;
+		}
 		frgmark(FRGMARK_STAGE_EXEC_RAMDISK_INIT_FAILED);
 		pr_err("Failed to execute %s (error %d)\n",
 		       ramdisk_execute_command, ret);
@@ -997,8 +1004,10 @@ static int __ref kernel_init(void *unused)
 	if (execute_command) {
 		frgmark(FRGMARK_STAGE_EXEC_CMDLINE_INIT);
 		ret = run_init_process(execute_command);
-		if (!ret)
+		if (!ret) {
+			frgmark_userspace_reached();
 			return 0;
+		}
 		panic("Requested init %s failed (error %d).",
 		      execute_command, ret);
 	}
@@ -1006,8 +1015,10 @@ static int __ref kernel_init(void *unused)
 	if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
 	    !try_to_run_init_process("/bin/init") ||
-	    !try_to_run_init_process("/bin/sh"))
+	    !try_to_run_init_process("/bin/sh")) {
+		frgmark_userspace_reached();
 		return 0;
+	}
 
 	panic("No working init found.  Try passing init= option to kernel. "
 	      "See Linux Documentation/init.txt for guidance.");

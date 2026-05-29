@@ -20,6 +20,7 @@
 #include "msm8953-camera-sensor-mtp.dtsi"
 #include "msm8953-mdss-panels-nx549j.dtsi"
 #include "msm8953-pinctrl-nx549j.dtsi"
+#include "nx549j/msm8953-nubia-common-nx549j.dtsi"
 
 /* Ramoops region (1 MiB) for pstore crash diagnostics. */
 /{
@@ -33,8 +34,13 @@
 			reg = <0x0 0x9ff00000 0x0 0x100000>;
 			record-size    = <0x10000>;
 			console-size   = <0x40000>;
-			ftrace-size    = <0x10000>;
 			pmsg-size      = <0x40000>;
+			android,ramoops-buffer-start = <0x9ff00000>;
+			android,ramoops-buffer-size = <0x100000>;
+			android,ramoops-console-size = <0x40000>;
+			android,ramoops-pmsg-size = <0x40000>;
+			android,ramoops-record-size = <0x10000>;
+			android,ramoops-dump-oops = <0x1>;
 			no-map;
 		};
 	};

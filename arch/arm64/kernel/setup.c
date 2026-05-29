@@ -37,8 +37,10 @@
 #include <linux/interrupt.h>
 #include <linux/smp.h>
 #include <linux/fs.h>
+#include <linux/frgmark.h>
 #include <linux/proc_fs.h>
 #include <linux/memblock.h>
+#include <linux/nx549j_splashprobe.h>
 #include <linux/of_fdt.h>
 #include <linux/efi.h>
 #include <linux/psci.h>
@@ -265,10 +267,16 @@ void __init setup_arch(char **cmdline_p)
 
 	early_fixmap_init();
 	early_ioremap_init();
+	frgmark_early(FRGMARK_STAGE_SETUP_EARLY_IOREMAP_READY);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_EARLY_IOREMAP_READY);
 
 	setup_machine_fdt(__fdt_pointer);
+	frgmark_early(FRGMARK_STAGE_SETUP_FDT_DONE);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_FDT_DONE);
 
 	parse_early_param();
+	frgmark_early(FRGMARK_STAGE_SETUP_EARLY_PARAM_DONE);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_EARLY_PARAM_DONE);
 
 	/*
 	 *  Unmask asynchronous aborts after bringing up possible earlycon.
@@ -285,8 +293,12 @@ void __init setup_arch(char **cmdline_p)
 	xen_early_init();
 	efi_init();
 	arm64_memblock_init();
+	frgmark_early(FRGMARK_STAGE_SETUP_MEMBLOCK_DONE);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_MEMBLOCK_DONE);
 
 	paging_init();
+	frgmark_early(FRGMARK_STAGE_SETUP_PAGING_DONE);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_PAGING_DONE);
 
 	acpi_table_upgrade();
 
@@ -301,13 +313,17 @@ void __init setup_arch(char **cmdline_p)
 	kasan_init();
 
 	request_standard_resources();
+	frgmark_early(FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET);
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_BEFORE_IOREMAP_RESET);
 
 	early_ioremap_reset();
 
-	if (acpi_disabled)
+	if (acpi_disabled) {
 		psci_dt_init();
-	else
+		nx549j_splashprobe(NX549J_SPLASH_STAGE_PSCI_DONE);
+	} else {
 		psci_acpi_init();
+	}
 
 	cpu_read_bootcpu_ops();
 	smp_init_cpus();
@@ -337,6 +353,7 @@ void __init setup_arch(char **cmdline_p)
 	}
 
 	init_random_pool();
+	nx549j_splashprobe(NX549J_SPLASH_STAGE_SETUP_ARCH_DONE);
 }
 
 static int __init topology_init(void)

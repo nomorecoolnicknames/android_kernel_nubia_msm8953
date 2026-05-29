@@ -1,0 +1,162 @@
+/*
+ * Nubia NX549J low-level DT overlay.
+ *
+ * Ported from the local 3.18 Nubia NX549/nubia_common DTS truth into the
+ * current 4.9 include model. Keep board-id/pmic-id in the top DTS; this file
+ * carries the common hardware deltas that must not come from QRD/Tissot donor
+ * defaults.
+ */
+
+/ {
+	firmware: firmware {
+		android {
+			/delete-node/ vbmeta;
+
+			fstab {
+				vendor {
+					dev = "/dev/block/platform/soc/7824900.sdhci/by-name/oem";
+					fsmgr_flags = "wait,first_stage_mount";
+					status = "ok";
+				};
+
+				system {
+					compatible = "android,system";
+					dev = "/dev/block/platform/soc/7824900.sdhci/by-name/system";
+					type = "ext4";
+					mnt_flags = "ro,barrier=1,discard";
+					fsmgr_flags = "wait";
+					status = "ok";
+				};
+			};
+		};
+	};
+};
+
+&other_ext_mem {
+	reg = <0x0 0x84a00000 0x0 0x1e00000>;
+};
+
+&soc {
+	/delete-node/ qseecom@85b00000;
+
+	qcom_seecom: qseecom@84a00000 {
+		compatible = "qcom,qseecom";
+		reg = <0x84a00000 0x1900000>;
+		reg-names = "secapp-region";
+		qcom,hlos-num-ce-hw-instances = <1>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,support-fde;
+		qcom,msm-bus,name = "qseecom-noc";
+		qcom,msm-bus,num-cases = <4>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,support-bus-scaling;
+		qcom,appsbl-qseecom-support;
+		qcom,msm-bus,vectors-KBps =
+			<55 512 0 0>,
+			<55 512 0 0>,
+			<55 512 120000 1200000>,
+			<55 512 393600 3936000>;
+		clocks = <&clock_gcc clk_crypto_clk_src>,
+			 <&clock_gcc clk_gcc_crypto_clk>,
+			 <&clock_gcc clk_gcc_crypto_ahb_clk>,
+			 <&clock_gcc clk_gcc_crypto_axi_clk>;
+		clock-names = "core_clk_src", "core_clk",
+				"iface_clk", "bus_clk";
+		qcom,ce-opp-freq = <100000000>;
+		status = "ok";
+	};
+
+	qcom,mss@4080000 {
+		/delete-property/ qcom,pas-id;
+		/delete-property/ qcom,pil-mss-memsetup;
+	};
+};
+
+&wdog {
+	qcom,bark-time = <20000>;
+	qcom,pet-time = <15000>;
+};
+
+&apc_cpr {
+	/delete-property/ qcom,cpr-panic-reg-addr-list;
+	/delete-property/ qcom,cpr-panic-reg-name-list;
+};
+
+&spmi_bus {
+	qcom,pm8953@0 {
+		qcom,power-on@800 {
+			qcom,store-hard-reset-reason;
+
+			qcom,pon_1 {
+				qcom,support-reset = <1>;
+				qcom,s1-timer = <10256>;
+				qcom,s2-timer = <2000>;
+				qcom,s2-type = <7>;
+			};
+		};
+	};
+};
+
+&qusb_phy {
+	qcom,qusb-phy-init-seq = <0xf8 0x80
+				0x53 0x84
+				0x83 0x88
+				0xcf 0x8c
+				0x14 0x9c
+				0x30 0x08
+				0x79 0x0c
+				0x21 0x10
+				0x00 0x90
+				0x9f 0x1c
+				0x00 0x18>;
+};
+
+&qpnp_smbcharger {
+	qcom,dc-psy-type = "Mains";
+	qcom,dc-psy-ma = <1500>;
+	qcom,float-voltage-mv = <4400>;
+	qcom,resume-delta-mv = <50>;
+	qcom,fastchg-current-ma = <2000>;
+	qcom,parallel-usb-min-current-ma = <1200>;
+	qcom,parallel-usb-9v-min-current-ma = <800>;
+	qcom,thermal-mitigation = <1700 900 500 0>;
+	qcom,dcin-vadc = <&pmi8950_vadc>;
+	qcom,bmd-pin-src = "bpd_thm_id";
+	qcom,charging-timeout-mins = <768>;
+	qcom,parallel-main-chg-fcc-percent = <50>;
+	qcom,ibatmax-cool-ma = <750>;
+	qcom,cool-bat-mv = <4100>;
+
+	nubia,chg-compatible-no-smb1351;
+	nubia,warm-using-cntl;
+	nubia,warm-using-ibatt-ma = <500>;
+	nubia,warm-using-dec = <400>;
+	nubia,warm-chging-ma = <250>;
+	nubia,warm-chging-mv = <4100>;
+	nubia,warm-chging-dec2 = <460>;
+	nubia,cool-chging-ma = <700>;
+};
+
+&qpnp_fg {
+	qcom,resume-soc = <99>;
+	qcom,fg-iterm-ma = <150>;
+	qcom,resume-soc-raw = <0xfd>;
+	qcom,fg-cc-cv-threshold-mv = <4390>;
+	qcom,thermal-coefficients = [ec 85 75 4a fc 35];
+	qcom,warm-bat-decidegc = <430>;
+	qcom,cool-bat-decidegc = <80>;
+	qcom,hot-bat-decidegc = <500>;
+	qcom,cold-bat-decidegc = <(-50)>;
+	qcom,irq-volt-empty-mv = <3300>;
+	qcom,fg-cutoff-voltage-mv = <3100>;
+	qcom,fg-vbat-estimate-diff-mv = <200>;
+	qcom,fg-delta-soc = <1>;
+	qcom,fg-vbatt-low-threshold = <3420>;
+	qcom,vbat-estimate-diff-mv = <200>;
+	qcom,hold-soc-while-full;
+	qcom,ext-sense-type;
+	qcom,capacity-estimation-on;
+	qcom,capacity-learning-feedback;
+};

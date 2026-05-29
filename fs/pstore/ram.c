@@ -537,42 +537,100 @@ static int ramoops_parse_dt_size(struct platform_device *pdev,
 	return 0;
 }
 
+static int ramoops_parse_dt_size_fallback(struct platform_device *pdev,
+					  const char *propname,
+					  const char *fallback,
+					  unsigned long *field)
+{
+	u32 value = 0;
+	int ret;
+
+	ret = ramoops_parse_dt_size(pdev, propname, &value);
+	if (ret < 0)
+		return ret;
+
+	if (!value && fallback) {
+		ret = ramoops_parse_dt_size(pdev, fallback, &value);
+		if (ret < 0)
+			return ret;
+	}
+
+	*field = value;
+	return 0;
+}
+
 static int ramoops_parse_dt(struct platform_device *pdev,
 			    struct ramoops_platform_data *pdata)
 {
 	struct device_node *of_node = pdev->dev.of_node;
 	struct resource *res;
 	u32 value;
+	u32 start32;
 	int ret;
 
 	dev_dbg(&pdev->dev, "using Device Tree\n");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
-		dev_err(&pdev->dev,
-			"failed to locate DT /reserved-memory resource\n");
-		return -EINVAL;
+		ret = of_property_read_u32(of_node,
+					   "android,ramoops-buffer-start",
+					   &start32);
+		if (ret < 0) {
+			dev_err(&pdev->dev,
+				"failed to locate DT ramoops memory resource: %d\n",
+				ret);
+			return ret;
+		}
+
+		ret = ramoops_parse_dt_size(pdev,
+					    "android,ramoops-buffer-size",
+					    &value);
+		if (ret < 0)
+			return ret;
+
+		pdata->mem_address = start32;
+		pdata->mem_size = value;
+	} else {
+		pdata->mem_size = resource_size(res);
+		pdata->mem_address = res->start;
 	}
 
-	pdata->mem_size = resource_size(res);
-	pdata->mem_address = res->start;
 	pdata->mem_type = of_property_read_bool(of_node, "unbuffered");
 	pdata->dump_oops = !of_property_read_bool(of_node, "no-dump-oops");
 
-#define parse_size(name, field) {					\
-		ret = ramoops_parse_dt_size(pdev, name, &value);	\
+	ret = of_property_read_u32(of_node, "android,ramoops-dump-oops",
+				   &value);
+	if (!ret)
+		pdata->dump_oops = !!value;
+
+#define parse_size(name, fallback, field) {				\
+		ret = ramoops_parse_dt_size_fallback(pdev, name, fallback, \
+						     &field);		\
 		if (ret < 0)						\
 			return ret;					\
-		field = value;						\
 	}
 
-	parse_size("record-size", pdata->record_size);
-	parse_size("console-size", pdata->console_size);
-	parse_size("ftrace-size", pdata->ftrace_size);
-	parse_size("pmsg-size", pdata->pmsg_size);
-	parse_size("ecc-size", pdata->ecc_info.ecc_size);
+	parse_size("record-size", "android,ramoops-record-size",
+		   pdata->record_size);
+	parse_size("console-size", "android,ramoops-console-size",
+		   pdata->console_size);
+	parse_size("ftrace-size", "android,ramoops-ftrace-size",
+		   pdata->ftrace_size);
+	parse_size("pmsg-size", "android,ramoops-pmsg-size",
+		   pdata->pmsg_size);
+
+	ret = ramoops_parse_dt_size(pdev, "ecc-size", &value);
+	if (ret < 0)
+		return ret;
+	pdata->ecc_info.ecc_size = value;
 
 #undef parse_size
+
+	dev_info(&pdev->dev,
+		 "parsed DT mem=0x%llx size=0x%lx record=0x%lx console=0x%lx ftrace=0x%lx pmsg=0x%lx dump_oops=%d\n",
+		 (unsigned long long)pdata->mem_address, pdata->mem_size,
+		 pdata->record_size, pdata->console_size, pdata->ftrace_size,
+		 pdata->pmsg_size, pdata->dump_oops);
 
 	return 0;
 }

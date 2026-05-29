@@ -286,6 +286,7 @@ static void halt_spmi_pmic_arbiter(void)
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
+	int pon_rc;
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/* Write download mode flags if we're panic'ing
 	 * Write download mode flags if restart_mode says so
@@ -326,8 +327,10 @@ static void msm_restart_prepare(const char *cmd)
 				PON_RESTART_REASON_BOOTLOADER);
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
-			qpnp_pon_set_restart_reason(
-				PON_RESTART_REASON_RECOVERY);
+			pon_rc = qpnp_pon_set_restart_reason(
+					PON_RESTART_REASON_RECOVERY);
+			pr_emerg("NX549J msm-restart: cmd=recovery qpnp_rc=%d restart_reason=%p\n",
+				 pon_rc, restart_reason);
 			__raw_writel(0x77665502, restart_reason);
 		} else if (!strcmp(cmd, "rtc")) {
 			qpnp_pon_set_restart_reason(
@@ -700,6 +703,8 @@ skip_sysfs_create:
 
 	force_warm_reboot = of_property_read_bool(dev->of_node,
 						"qcom,force-warm-reboot");
+	pr_emerg("NX549J msm-restart: probe ok restart_reason=%p pshold=%p force_warm=%d\n",
+		 restart_reason, msm_ps_hold, force_warm_reboot);
 
 	return 0;
 
