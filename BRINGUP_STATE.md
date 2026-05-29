@@ -2774,3 +2774,88 @@ cat /srv/forge/work/nx549j-preserve/release-attempt88-20260529-async-bcb-checkpo
 bash -n /srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh
 bash -n /srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh
 ```
+
+2026-05-29 attempt89 BCB stage stamp:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and packaged offline only; it has not been flashed or
+  runtime-proven because the target is not attached.
+
+Hypothesis: when pstore/ramoops remains empty or unreadable from recovery, a
+successful kernel-side BCB write can still carry minimal target-kernel evidence
+back to recovery. NX549J already proved the AOSP BCB selector at `misc` offset
+0. The first BCB page has reserved space outside `command`, `status`, and the
+main `recovery` message, so a text stamp there can report the last FRGmark
+stage without changing the bootloader's `boot-recovery` selector.
+
+Evidence:
+
+- FACT: NX549J previously proved `boot-recovery` at `misc` page 0 selects
+  recovery automatically.
+- FACT: attempt88 still depended on pstore or printk evidence to know which
+  target-kernel stage wrote BCB.
+- FACT: attempt89 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/boot-bcb-stage-stamp-120s.img`.
+- FACT: attempt89 boot SHA-256:
+  `887bca3481913f1a5006bd8fe22543bcbf085ebe1499a97909333876fa36e96b`.
+- FACT: `verify-bcb-stage-stamp.txt` confirms `FRGMARK-BCB-v1`,
+  `last_stage=0x%02x`, and `nx549j-frgmark-timeout` are present in `vmlinux`.
+- FACT: `VERIFY.md` reports SHA256SUMS, boot cmdline, required symbols,
+  marker strings, pstore config, and ramoops DTB checks as PASS.
+
+Files changed:
+
+- `arch/arm64/kernel/frgmark.c`
+  - tracks the latest FRGmark stage in `frg_last_stage`;
+  - writes a `FRGMARK-BCB-v1` text stamp at BCB offset `1024` whenever the
+    kernel writes the recovery BCB command.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt89.sh`
+  - adds a SHA-gated runner for the attempt89 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt89.
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - runs marker grep after dumping `misc`, so the BCB stamp is included.
+- `/srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh`
+  - also greps after dumping `misc` for manual-recovery finishes.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - treats `FRGMARK-BCB`/`last_stage` as marker evidence.
+- `/srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/README.md`
+  - records artifact status, claim boundary, verification, and next device
+    step.
+
+Why each file changed:
+
+- The kernel BCB stamp is a recovery-readable fallback for the case where
+  block storage is alive enough to write `misc`, but pstore is still empty or
+  recovery cannot parse it.
+- The host script changes make the existing recovery capture consume the new
+  BCB evidence before restoring the saved `misc` backup.
+
+Expected next marker:
+
+- If the target reaches a kernel-side BCB write and later returns to recovery,
+  `after-recovery/marker-grep.txt` or a manual-finish `marker-grep.txt` should
+  contain `FRGMARK-BCB-v1` and `last_stage=0x..`.
+- If automatic recovery still times out and manual recovery shows no BCB stamp,
+  the hang remains before successful block-device BCB writes or in a reset path
+  that clears/wipes the page before recovery can read it.
+
+Rollback condition:
+
+- Revert this diagnostic if recovery refuses the BCB page because reserved
+  bytes are non-zero, if `boot-recovery` no longer selects recovery, or if a
+  fresh capture proves the stamp overwrites any bootloader-owned field.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp boot-bcb-stage-stamp-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/SHA256SUMS
+cat /srv/forge/work/nx549j-preserve/release-attempt89-20260529-bcb-stage-stamp/verify-bcb-stage-stamp.txt
+bash -n /srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh /srv/forge/android/nx549j/scripts/nx549j-finish-flash-timeout.sh /srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh /srv/forge/android/nx549j/scripts/nx549j-run-attempt89.sh
+```

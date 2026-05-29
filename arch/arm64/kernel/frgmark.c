@@ -44,6 +44,8 @@
 #define FRG_PSHOLD_PA 0x004ab000UL
 #define FRG_PSHOLD_LEN 0x4
 #define FRG_BCB_SIZE 2048
+#define FRG_BCB_DIAG_OFF 1024
+#define FRG_BCB_DIAG_LEN 256
 #define FRG_BCB_MISC_MAJOR 179U
 #define FRG_BCB_MISC_MINOR 28U
 #define FRG_MAGIC_HI  0x46524700U
@@ -95,6 +97,7 @@ static bool frg_recovery_bcb_cleared;
 static bool frg_recovery_bcb_disabled;
 static bool frg_panic_reboot_enabled;
 static unsigned long frg_recovery_no_bcb_reset_jiffies;
+static u8 frg_last_stage;
 static unsigned int frg_bcb_misc_major = FRG_BCB_MISC_MAJOR;
 static unsigned int frg_bcb_misc_minor = FRG_BCB_MISC_MINOR;
 
@@ -489,12 +492,19 @@ static void frgmark_arm_early_recovery_guard(const char *reason)
 	frg_early_wdt_programmed = true;
 }
 
-static void frgmark_fill_recovery_bcb(void *buf)
+static void frgmark_fill_recovery_bcb(void *buf, const char *reason)
 {
+	u8 stage = frg_last_stage;
+
 	memset(buf, 0, FRG_BCB_SIZE);
 	memcpy(buf, "boot-recovery", sizeof("boot-recovery") - 1);
 	memcpy(buf + 64, "recovery\n--reason=nx549j-frgmark-timeout\n",
 	       sizeof("recovery\n--reason=nx549j-frgmark-timeout\n") - 1);
+	snprintf(buf + FRG_BCB_DIAG_OFF, FRG_BCB_DIAG_LEN,
+		 "FRGMARK-BCB-v1\nartifact=%s\nreason=%s\nlast_stage=0x%02x\nlast_name=%s\njiffies=%lu\n",
+		 FRG_RECOVERY_TIMEOUT_ARTIFACT,
+		 reason ? reason : "unknown",
+		 stage, frgmark_stage_name(stage), jiffies);
 }
 
 static void frgmark_fill_empty_bcb(void *buf)
@@ -547,7 +557,7 @@ static int frgmark_write_bcb_page(const char *reason, bool recovery)
 		return -ENOMEM;
 
 	if (recovery)
-		frgmark_fill_recovery_bcb(buf);
+		frgmark_fill_recovery_bcb(buf, reason);
 	else
 		frgmark_fill_empty_bcb(buf);
 	dev = MKDEV(frg_bcb_misc_major, frg_bcb_misc_minor);
@@ -674,6 +684,7 @@ static void frgmark_prime_recovery_imem(const char *reason)
 
 static void frgmark_timeout_marker(u8 stage)
 {
+	frg_last_stage = stage;
 	if (frg_imem)
 		frgmark_write_imem_record(frg_imem, stage);
 	if (frg_ramoops)
@@ -968,6 +979,7 @@ void __init frgmark_init_iomap(void)
 	if (!frg_ramoops)
 		pr_emerg("FRGmark: ramoops marker ioremap(0x%lx) failed\n",
 			 FRG_RAMOOPS_PA);
+	frg_last_stage = FRGMARK_STAGE_IMEM_READY;
 	frgmark_write_imem_record(frg_imem, FRGMARK_STAGE_IMEM_READY);
 	frgmark_write_ramoops_record(frg_ramoops, FRGMARK_STAGE_IMEM_READY);
 	pr_emerg("FRGmark: IMEM @0x%lx OK; ramoops @0x%lx stage=01 name=%s\n",
@@ -978,6 +990,7 @@ void __init frgmark_init_iomap(void)
 
 void frgmark(u8 stage)
 {
+	frg_last_stage = stage;
 	if (!frg_imem) {
 		frgmark_write_ramoops_record(frg_ramoops, stage);
 		frgmark_maybe_force_reset(stage);
