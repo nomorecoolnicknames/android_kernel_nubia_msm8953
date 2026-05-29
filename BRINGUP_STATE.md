@@ -3926,3 +3926,45 @@ Rollback condition:
 
 - Revert only if the decoder call makes capture scripts fail before `misc`
   restore. The decoder is best-effort and currently guarded with `|| true`.
+
+2026-05-29 attempt97 reconnect helper:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side launch helper only; not flashed because no device
+  is attached on ADB port `15037`.
+
+Evidence:
+
+- FACT: `ADB_SERVER_SOCKET=tcp:127.0.0.1:15037 adb devices -l` listed no
+  devices.
+- FACT: `sha256sum -c` still verifies all attempt97 release files under
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/`.
+- FACT: kernel repo HEAD is `daa3655f3 docs: record nx549j attempt97 decode
+  runner`; system/core HEAD is `dfec6ad diag: ack nx549j first-stage
+  userspace`.
+- FACT: `bash -n scripts/nx549j-wait-recovery-and-run-latest.sh
+  scripts/nx549j-run-latest.sh scripts/nx549j-run-attempt97.sh` passed.
+- FACT: `WAIT_ATTACH_SECONDS=3 POLL_SECONDS=1
+  scripts/nx549j-wait-recovery-and-run-latest.sh` timed out after only
+  `target-not-ready ... state='missing'` messages and did not flash.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-run-latest.sh`
+  - waits for exact serial `30785d1a` to appear as ADB `recovery`, then execs
+    `scripts/nx549j-run-latest.sh`.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/README.md`
+  - documents the reconnect helper as the operator-facing launch path.
+
+Expected next action:
+
+- When the phone is reconnected in recovery, run
+  `scripts/nx549j-wait-recovery-and-run-latest.sh` or direct
+  `scripts/nx549j-run-latest.sh`. The first command is safer if the USB/ADB
+  tunnel may appear late.
+
+Rollback condition:
+
+- Remove the helper if it ever launches on a non-recovery state or wrong
+  serial. Current smoke proves it waits instead of flashing while the target is
+  missing.
