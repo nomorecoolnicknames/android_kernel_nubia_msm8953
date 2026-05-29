@@ -3026,3 +3026,72 @@ bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt91.sh
 bash -n /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh
 bash -n /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
 ```
+
+2026-05-29 attempt92 late panic pstore proof:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: repacked and verified offline only; it has not been flashed
+  because the forwarded ADB endpoint has no attached target.
+- This is not the preferred boot-to-userspace image. `nx549j-run-latest.sh`
+  remains pointed at attempt91. attempt92 is an isolated pstore/recovery proof
+  image.
+
+Hypothesis: if the target reaches late initcall stage `0x57`, the async BCB
+checkpoint should have had a chance to write the recovery selector. A controlled
+`frgmark.force_panic_stage=0x57` panic can then prove whether target-kernel
+pstore and automatic recovery capture work, without using host-prewritten BCB.
+
+Evidence:
+
+- FACT: attempt92 reuses the exact attempt91 kernel, ramdisk, `System.map`,
+  `vmlinux`, `.config`, and DTB.
+- FACT: `drivers/of/platform.c` explicitly creates a platform device for
+  `compatible = "ramoops"` inside `/reserved-memory`.
+- FACT: `fs/pstore/ram.c` parses the DT properties used by the NX549J DTB:
+  `reg`, `record-size`, `console-size`, and `pmsg-size`.
+- FACT: attempt92 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof/boot-late-panic-pstore-proof.img`.
+- FACT: attempt92 boot SHA-256:
+  `4ee2bb41b75304e9fbbb9bc81dc93bf501fbff2722dc04107cc055a8dc410c81`.
+- FACT: unpacked cmdline includes:
+  `frgmark.force_panic_stage=0x57 panic=5 oops=panic panic_print=0x3f ignore_loglevel loglevel=8 printk.time=1`.
+- FACT: `VERIFY.md` reports SHA256SUMS, boot cmdline, required symbols,
+  marker strings, pstore config, serial early console config, and ramoops DTB
+  checks as PASS.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt92-pstore-panic.sh`
+  - adds a SHA-gated runner for the attempt92 panic-test boot image.
+- `/srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof/README.md`
+  - records artifact status, claim boundary, static pstore evidence, runtime
+    pass criteria, and the exact runner command.
+
+Runtime pass criteria:
+
+- flashed boot SHA equals the attempt92 SHA above;
+- boot partition prefix SHA equals the attempt92 SHA above;
+- recovery was reached without button input;
+- `misc-first-page-strings.txt` includes `FRGMARK-BCB-v1`;
+- pstore contains fresh target-kernel text including
+  `FRGmark forced panic stage=57` or `nx549j-frgmark-force-panic`.
+
+Runtime command:
+
+```sh
+/srv/forge/android/nx549j/scripts/nx549j-run-attempt92-pstore-panic.sh
+```
+
+Rollback condition:
+
+- Do not make attempt92 the default boot image. Remove or ignore this repack if
+  it causes a loop or if it fails to add any pstore/BCB evidence beyond
+  attempt91.
+
+Verification commands:
+
+```sh
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof boot-late-panic-pstore-proof.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt92-20260529-late-panic-pstore-proof/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt92-pstore-panic.sh
+```
