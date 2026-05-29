@@ -3531,3 +3531,43 @@ Expected next marker:
 - If attempt94 returns to recovery but misc restore fails, the runtime
   `SUMMARY.md` should still preserve `CANDIDATE_AUTO` and point at
   `after-recovery/restore-required-status.txt` instead of losing the run result.
+
+2026-05-29 recovery-only flash preflight:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script behavior checked offline; no device available.
+
+Problem fixed:
+
+The flash runner accepted either ADB `device` or `recovery` before writing
+`boot`, checking/flashing recovery, and backing up/writing `misc`. That was too
+loose for a block-write test: normal Android `device` is useful only after the
+test boot as evidence that userspace was reached. The initial flashing context
+should be recovery ADB, where the existing partition write/restore assumptions
+were proven.
+
+Files changed outside the kernel git repository:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-bcb-lib.sh`
+  - adds `require_recovery_target()`, which keeps the existing NX549J identity
+    checks but rejects initial state other than `recovery`.
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - uses `require_recovery_target()` before any recovery/boot/misc block writes;
+  - documents that Android `device` is accepted only as a post-reboot success
+    result, not as the initial flashing state.
+
+Evidence:
+
+- FACT: `bash -n` passed for `nx549j-bcb-lib.sh`,
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-latest.sh`, and
+  `nx549j-run-attempt94.sh`.
+- FACT: with no device attached, `nx549j-run-latest.sh` still refuses to flash:
+  `ERROR: target 30785d1a is not online through ADB, state=''`.
+- FACT: attempt94 packaged files still pass `sha256sum -c SHA256SUMS`.
+
+Expected next marker:
+
+- The next attempt94 flash must start with `30785d1a` visible as ADB
+  `recovery`. If it is already Android `device`, the runner should reject the
+  flash instead of attempting block writes from the wrong context.
