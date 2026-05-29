@@ -8,6 +8,14 @@
  */
 
 / {
+	reserved-memory {
+		reloc_mem: reloc_region@0 {
+			compatible = "removed-dma-pool";
+			no-map;
+			reg = <0x0 0x8c200000 0x0 0x1800000>;
+		};
+	};
+
 	firmware: firmware {
 		android {
 			/delete-node/ vbmeta;
@@ -34,6 +42,32 @@
 
 &other_ext_mem {
 	reg = <0x0 0x84a00000 0x0 0x1e00000>;
+};
+
+&modem_mem {
+	/delete-property/ no-map;
+	no-map-fixup;
+	reg = <0x0 0x86c00000 0x0 0x5600000>;
+};
+
+&adsp_fw_mem {
+	status = "disabled";
+};
+
+&wcnss_fw_mem {
+	status = "disabled";
+};
+
+&secure_mem {
+	size = <0 0x09800000>;
+};
+
+&adsp_mem {
+	size = <0 0x400000>;
+};
+
+&dfps_data_mem {
+	/delete-property/ status;
 };
 
 &soc {
@@ -71,6 +105,14 @@
 	qcom,mss@4080000 {
 		/delete-property/ qcom,pas-id;
 		/delete-property/ qcom,pil-mss-memsetup;
+	};
+
+	qcom,lpass@c200000 {
+		memory-region = <&reloc_mem>;
+	};
+
+	qcom,pronto@a21b000 {
+		memory-region = <&reloc_mem>;
 	};
 };
 

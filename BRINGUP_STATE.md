@@ -2592,3 +2592,91 @@ Verification commands:
 grep -n "error:" nx549j-18.1-bootimage-ramoops-fix.log
 tail -n 200 nx549j-18.1-bootimage-ramoops-fix.log
 ```
+
+### 2026-05-29 - Align NX549J 4.9 reserved-memory map to stock Nubia 3.18
+
+Category: DIAGNOSTIC
+
+Hypothesis: the remaining bootlogo hang may be caused by an incomplete
+hardware-truth DT port rather than by the recovery reset path alone. The
+current 4.9 DTB still carried donor MSM8953 fixed carveouts for modem, ADSP
+firmware, WCNSS firmware, secure memory, and disabled DFPS data memory. Stock
+Nubia 3.18 instead uses a smaller modem carveout plus a shared reloc carveout
+for LPASS/Pronto firmware. The donor map can reserve or overlap memory that
+Nubia firmware expects to own before userspace ever starts.
+
+Evidence:
+
+- Stock source:
+  `/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/reference/nubia-stock-kernel/kernel/arch/arm/boot/dts/qcom/NX549/msm8953.dtsi`.
+- FACT: stock `reserved-memory` defines:
+  - `other_ext_mem` `0x84a00000/0x1e00000`;
+  - `modem_mem` `0x86c00000/0x5600000` with `no-map-fixup`;
+  - `reloc_mem` `0x8c200000/0x1800000`;
+  - `secure_mem` size `0x09800000`;
+  - `adsp_mem` size `0x400000`;
+  - `dfps_data_mem` without donor `status = "disabled"`.
+- FACT: stock `qcom,lpass@c200000` and `qcom,pronto@a21b000` both use
+  `memory-region = <&reloc_mem>`.
+- FACT: attempt86 compiled DTB still had donor `modem_mem` size `0x6a00000`,
+  donor fixed `adsp_fw_mem` and `wcnss_fw_mem`, donor `secure_mem` size
+  `0x0b400000`, donor `adsp_mem` size `0x800000`, and disabled DFPS data.
+- FACT: attempt87 compiled DTB verification is in
+  `/srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map/verify-stock-memory-map.txt`.
+- FACT: attempt87 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map/boot-stock-reserved-memory-map-120s.img`.
+- FACT: attempt87 boot SHA-256:
+  `512dc2f3777ec0dc042f9648c327a46fc82a0bc2ef5d8536ce0a8ff540fcaa79`.
+- FACT: attempt87 was built and packaged offline only; it has not been
+  flashed or runtime-proven.
+
+Files changed:
+
+- `arch/arm64/boot/dts/qcom/nx549j/msm8953-nubia-common-nx549j.dtsi`
+  - restores the stock Nubia modem/reloc/secure/adsp/dfps reserved-memory
+    layout and redirects LPASS/Pronto to `reloc_mem`.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt87.sh`
+  - adds a SHA-gated runner for the attempt87 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt87.
+- `/srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map/README.md`
+  - records artifact status, claim boundary, verification, and next device
+    step.
+
+Why each file changed:
+
+- The NX549J overlay is the narrowest place to apply stock hardware-truth
+  differences without mutating donor/reference sources.
+- `adsp_fw_mem` and `wcnss_fw_mem` are marked `status = "disabled"` because
+  keeping them enabled would reserve donor fixed ranges that overlap the stock
+  `reloc_mem` range.
+- The run scripts must follow the latest packaged artifact and refuse SHA
+  mismatches before any future flash.
+
+Expected next marker:
+
+- If the memory-map mismatch is blocking early firmware/PIL/TZ setup, the next
+  flash should advance beyond the previous bootlogo hang or produce fresher
+  pstore/FRGmark evidence before the 120-second recovery fallback.
+- If the hang is unrelated, the next runtime result should still be bootlogo
+  hang or manual recovery with no userspace; then this diagnostic stays a
+  rejected cause candidate unless another capture shows improved markers.
+
+Rollback condition:
+
+- Revert this diagnostic if attempt87 regresses earlier than attempt86, if a
+  fresh capture proves the donor 4.9 ADSP/WCNSS fixed firmware regions are
+  required on NX549J, or if the compiled DTB no longer matches the stock Nubia
+  reserved-memory values documented above.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map boot-stock-reserved-memory-map-120s.img
+rg -n 'modem_region|reloc_region|secure_region|adsp_region|memory-region = <0x159>' /srv/forge/work/nx549j-preserve/release-attempt87-20260529-stock-reserved-memory-map/verify-stock-memory-map.txt
+```
