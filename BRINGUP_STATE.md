@@ -3489,3 +3489,45 @@ Expected next marker:
   runtime `SUMMARY.md` should still report `USERSPACE` and point at
   `after-userspace/restore-optional-status.txt` instead of exiting before the
   result is written.
+
+2026-05-29 recovery restore result-preservation fix:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: script behavior checked offline; no device available.
+
+Problem fixed:
+
+The recovery branch still called `restore_misc` as a hard requirement before
+writing the final result. If automatic recovery was observed but misc restore
+failed, the script could exit before writing `README.md` and `SUMMARY.md`,
+hiding the automatic-recovery evidence that the run was meant to prove.
+
+Files changed outside the kernel git repository:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-flash-boot-with-bcb-fallback.sh`
+  - sets `result=recovery-observed-within-wait-window` before restore;
+  - records `Recovery misc restore: completed` or
+    `failed-see-after-recovery-restore-logs`;
+  - writes `after-recovery/restore-required-status.txt` on restore failure.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - reports `Misc restore: CHECK_RECOVERY_RESTORE_LOGS` for that case while
+    preserving `Recovery result: CANDIDATE_AUTO`.
+
+Evidence:
+
+- FACT: `bash -n` passed for `nx549j-bcb-lib.sh`,
+  `nx549j-flash-boot-with-bcb-fallback.sh`,
+  `nx549j-summarize-flash-run.sh`, `nx549j-run-latest.sh`, and
+  `nx549j-run-attempt94.sh`.
+- FACT: a synthetic recovery summary fixture with
+  `Recovery misc restore: failed-see-after-recovery-restore-logs` produced
+  `Recovery result: CANDIDATE_AUTO`, `Target marker evidence: PRESENT`, and
+  `Misc restore: CHECK_RECOVERY_RESTORE_LOGS`.
+- FACT: with no device attached, `nx549j-run-latest.sh` still refuses to flash:
+  `ERROR: target 30785d1a is not online through ADB, state=''`.
+
+Expected next marker:
+
+- If attempt94 returns to recovery but misc restore fails, the runtime
+  `SUMMARY.md` should still preserve `CANDIDATE_AUTO` and point at
+  `after-recovery/restore-required-status.txt` instead of losing the run result.
