@@ -58,7 +58,6 @@
 #define FRG_RECOVERY_TIMEOUT_ARTIFACT "nx549j-frgmark-recovery-timeout"
 #define FRG_RECOVERY_SELECTOR_REFRESH_SEC 5U
 #define FRG_RECOVERY_BCB_RETRY_SEC 5U
-#define FRG_RECOVERY_NO_BCB_GRACE_SEC 60U
 #define FRG_PANIC_REBOOT_SEC 5
 
 #ifndef FRGMARK_FORCE_PANIC_STAGE
@@ -96,7 +95,6 @@ static bool frg_recovery_bcb_written;
 static bool frg_recovery_bcb_cleared;
 static bool frg_recovery_bcb_disabled;
 static bool frg_panic_reboot_enabled;
-static unsigned long frg_recovery_no_bcb_reset_jiffies;
 static u8 frg_last_stage;
 static unsigned int frg_bcb_misc_major = FRG_BCB_MISC_MAJOR;
 static unsigned int frg_bcb_misc_minor = FRG_BCB_MISC_MINOR;
@@ -708,37 +706,6 @@ static void frgmark_clear_recovery_selectors(const char *reason)
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 }
 
-static bool frgmark_no_bcb_grace_expired(void)
-{
-	return time_after_eq(jiffies, frg_recovery_no_bcb_reset_jiffies);
-}
-
-static void frgmark_no_bcb_fallback_reset(const char *reason, bool can_sleep)
-{
-	frg_recovery_timeout_done = true;
-	frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_NO_BCB_RESET);
-	if (can_sleep)
-		frgmark_prime_recovery_selectors(reason);
-	else
-		frgmark_prime_recovery_imem(reason);
-	pr_emerg("FRGmark: no-BCB fallback reset reason=%s timeout=%u grace=%u artifact=%s\n",
-		 reason ? reason : "unknown", frg_recovery_timeout_sec,
-		 FRG_RECOVERY_NO_BCB_GRACE_SEC, FRG_RECOVERY_TIMEOUT_ARTIFACT);
-	kmsg_dump(KMSG_DUMP_PANIC);
-
-	if (can_sleep) {
-		kernel_restart("recovery");
-		pr_emerg("FRGmark: no-BCB kernel_restart returned, forcing raw reset artifact=%s\n",
-			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
-		frgmark_direct_pshold_reset("no-bcb-after-kernel-restart");
-		msm_trigger_wdog_bite();
-		return;
-	}
-
-	if (!frgmark_drop_mapped_pshold("no-bcb-timer-timeout"))
-		msm_trigger_wdog_bite();
-}
-
 static void frgmark_recovery_selector_refresh(struct work_struct *work)
 {
 	if (!frg_recovery_timeout_armed || frg_recovery_userspace_done ||
@@ -776,12 +743,8 @@ static void frgmark_recovery_timeout_fire(struct work_struct *work)
 	frgmark_write_recovery_bcb("timeout");
 	if (!frg_recovery_bcb_written) {
 		frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_NO_BCB_GRACE);
-		if (frgmark_no_bcb_grace_expired()) {
-			frgmark_no_bcb_fallback_reset("timeout-no-bcb", true);
-			return;
-		}
-		pr_emerg("FRGmark: recovery timeout defers reset; no BCB recovery selector written grace=%u artifact=%s\n",
-			 FRG_RECOVERY_NO_BCB_GRACE_SEC,
+		pr_emerg("FRGmark: recovery timeout holds reset; no BCB recovery selector written retry=%u artifact=%s\n",
+			 FRG_RECOVERY_BCB_RETRY_SEC,
 			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 		schedule_delayed_work(&frg_recovery_timeout_work,
 				      FRG_RECOVERY_BCB_RETRY_SEC * HZ);
@@ -818,12 +781,8 @@ static void frgmark_recovery_timeout_timer_fire(unsigned long data)
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 	if (!frg_recovery_bcb_written) {
 		frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_NO_BCB_GRACE);
-		if (frgmark_no_bcb_grace_expired()) {
-			frgmark_no_bcb_fallback_reset("timer-no-bcb", false);
-			return;
-		}
-		pr_emerg("FRGmark: recovery timer defers reset; no BCB recovery selector written grace=%u artifact=%s\n",
-			 FRG_RECOVERY_NO_BCB_GRACE_SEC,
+		pr_emerg("FRGmark: recovery timer holds raw reset; no BCB recovery selector written retry=%u artifact=%s\n",
+			 FRG_RECOVERY_BCB_RETRY_SEC,
 			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 		mod_timer(&frg_recovery_timeout_timer,
 			  jiffies + FRG_RECOVERY_BCB_RETRY_SEC * HZ);
@@ -864,9 +823,6 @@ void __init frgmark_recovery_timeout_arm(void)
 
 	frgmark_register_panic_notifier();
 	frgmark_prime_recovery_selectors("arm");
-	frg_recovery_no_bcb_reset_jiffies =
-		jiffies + (frg_recovery_timeout_sec +
-			   FRG_RECOVERY_NO_BCB_GRACE_SEC) * HZ;
 	INIT_DELAYED_WORK(&frg_recovery_bcb_work, frgmark_recovery_bcb_retry);
 	INIT_DELAYED_WORK(&frg_recovery_selector_work,
 			  frgmark_recovery_selector_refresh);

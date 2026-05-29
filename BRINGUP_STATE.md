@@ -3127,3 +3127,83 @@ bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt92-pstore-panic.sh
   `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh` when serial
   `30785d1a` is back in recovery. Run attempt92 only as the deliberate
   pstore/recovery proof test, not as the default boot image.
+
+2026-05-29 attempt93 no-BCB no-loop timeout:
+
+- Patch category: DIAGNOSTIC / recovery-safety.
+- Runtime status: built and packaged offline only; it has not been flashed or
+  runtime-proven because the forwarded ADB endpoint has no attached target.
+
+Hypothesis:
+
+The existing timeout path can still create a reboot loop when no recovery BCB
+has been written: after the no-BCB grace window it primes only weak recovery
+selectors and forces PS_HOLD/watchdog. Runtime evidence already showed raw
+PS_HOLD/IMEM recovery selectors do not reliably select recovery on NX549J, so
+resetting without BCB makes the requested "reboot to recovery, not loop"
+less true. The safer diagnostic behavior is to reboot only after BCB is known
+written; otherwise keep retrying BCB and emitting markers without raw reset.
+
+Evidence:
+
+- FACT: NX549J has a proven recovery selector only for AOSP BCB at `misc`
+  offset 0, from `test-aosp-offset0-20260529-131128`.
+- FACT: attempt68 proved early IMEM recovery magic plus PS_HOLD reset did not
+  make the phone enter recovery automatically; manual recovery was required.
+- FACT: current source before attempt93 had no-BCB paths that could call
+  `kernel_restart("recovery")`, `frgmark_direct_pshold_reset()`, and
+  `msm_trigger_wdog_bite()` after the grace window without BCB.
+- FACT: recovery-side pstore was separately proven usable with the patched
+  recovery DTB props image:
+  `/srv/forge/work/nx549j-preserve/recovery-ramoops-cmdline-20260529/bootcheck-dtbprops-20260529-0828/dmesg.txt`
+  contains `pstore: Registered ramoops as persistent store backend`.
+- FACT: attempt93 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop/boot-no-bcb-no-loop-120s.img`.
+- FACT: attempt93 boot SHA-256:
+  `840fe9a2540f6798ff1dcc5a2a29e1195fecf18879b1d544cab3ca9099761360`.
+- FACT: `VERIFY.md` reports SHA256SUMS, boot cmdline, required symbols,
+  required marker strings, no-BCB no-loop gate, pstore config, serial early
+  console config, and ramoops DTB checks as PASS.
+
+Files changed:
+
+- `arch/arm64/kernel/frgmark.c`
+  - removes the no-BCB grace-window raw reset path.
+  - timeout work and timer now keep retrying when BCB is absent.
+  - reset to recovery remains allowed only after `frg_recovery_bcb_written`.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - verifies attempt93's no-BCB no-loop strings and rejects old reset-only
+    no-BCB fallback strings.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt93.sh`
+  - adds a SHA-gated runner for the attempt93 boot image.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - points the generic runner at attempt93.
+- `/srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop/README.md`
+  - records artifact status, claim boundary, and runtime command.
+
+Expected next marker:
+
+- If the target can write BCB before the timeout, recovery should be entered
+  via BCB and runtime capture should include a `FRGMARK-BCB-v1` stamp.
+- If the target cannot write BCB, the device should not enter the previous
+  no-BCB raw reset loop; manual recovery may still be required, but that would
+  be an honest "BCB never became writable" signal.
+
+Rollback condition:
+
+- Revert attempt93 if runtime proves BCB is written but the image no longer
+  resets into recovery, or if the no-reset behavior prevents collecting
+  evidence that a later, proven selector could have collected safely.
+
+Verification commands:
+
+```sh
+cd /srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot
+export CCACHE_DIR=/srv/forge/android/ccache
+source build/envsetup.sh
+lunch lineage_nx549j-userdebug
+mka bootimage -j4
+/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop boot-no-bcb-no-loop-120s.img
+sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt93-20260529-no-bcb-no-loop/SHA256SUMS
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt93.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh
+```
