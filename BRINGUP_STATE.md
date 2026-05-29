@@ -4151,7 +4151,7 @@ Files changed:
   - preserves the updated wait helper and snapshot README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
+    `106c76e905db0ba63149aa3429488de7a86a3747b921a01ad8765cd3b8f04a9b`.
 
 Expected next action:
 
@@ -4206,7 +4206,7 @@ Files changed:
     README.
 - `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
   - records updated runner snapshot manifest checksum
-    `ee612de504050795ef09c22b49dfee95e479bd593ebf8784b3ac6d25cb9343f7`.
+    `106c76e905db0ba63149aa3429488de7a86a3747b921a01ad8765cd3b8f04a9b`.
 
 Expected next action:
 
@@ -4276,3 +4276,48 @@ Rollback condition:
   original flash runner exit code, or starts flashing while the target is
   missing/non-recovery. Current synthetic tests cover all three control-flow
   branches.
+
+2026-05-29 attempt97 latest unattended entrypoint:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: host-side entrypoint alias only; not flashed because ADB
+  port `15037` currently lists no devices.
+
+Evidence:
+
+- FACT: `scripts/nx549j-run-unattended-latest.sh` now delegates to
+  `scripts/nx549j-run-attempt97-unattended.sh`, making the current unattended
+  path independent of the attempt number in the operator command.
+- FACT: no-device smoke with `WAIT_ATTACH_SECONDS=2 POLL_SECONDS=1` exited
+  status `1`, wrote an unattended log, did not create a finish wait log, and
+  did not flash because the initial recovery wait failed.
+- FACT: `bash -n scripts/nx549j-run-unattended-latest.sh` passed.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  passed after updating the release-local runner snapshot.
+- FACT: `sha256sum -c
+  /srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/RUNNER_SNAPSHOT_SHA256SUMS`
+  passed.
+
+Files changed:
+
+- `/srv/forge/android/nx549j/scripts/nx549j-run-unattended-latest.sh`
+  - stable latest unattended entrypoint for the current recovery wait, flash,
+    timeout handoff, finish wait path.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runner-snapshot-20260529/`
+  - preserves the latest unattended entrypoint and documents it in the snapshot
+    README.
+- `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/SHA256SUMS`
+  - records updated runner snapshot manifest checksum
+    `106c76e905db0ba63149aa3429488de7a86a3747b921a01ad8765cd3b8f04a9b`.
+
+Expected next action:
+
+- For the next Windows/reverse-ADB bench run, use
+  `/srv/forge/android/nx549j/scripts/nx549j-run-unattended-latest.sh`.
+  This is the stable current command; it currently targets attempt97.
+
+Rollback condition:
+
+- Revert or retarget this alias if a newer attempt supersedes attempt97 or if
+  the wrapper stops preserving the underlying attempt runner exit behavior.
