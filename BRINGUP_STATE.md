@@ -2904,6 +2904,9 @@ Files changed:
   - adds a SHA-gated runner for the attempt90 boot image.
 - `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
   - points the generic runner at attempt90.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - now extracts BCB stamp fields from `misc-first-page-strings.txt` into
+    `SUMMARY.md`: artifact, reason, `last_stage`, `last_name`, and `jiffies`.
 - `/srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/README.md`
   - records artifact status, claim boundary, verification, and next device
     step.
@@ -2913,6 +2916,7 @@ Expected next marker:
 - If BCB is written after any early `frgmark_early()` stage but before a later
   normal `frgmark()` stage, `misc-first-page-strings.txt` should report that
   early stage instead of `last_stage=0x00`.
+  `SUMMARY.md` should mirror that value under `BCB Stage Stamp`.
 
 Rollback condition:
 
@@ -2930,5 +2934,16 @@ mka bootimage -j4
 /srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp boot-early-stage-bcb-stamp-120s.img
 sha256sum -c /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/SHA256SUMS
 cat /srv/forge/work/nx549j-preserve/release-attempt90-20260529-early-stage-bcb-stamp/verify-bcb-stage-stamp.txt
-bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt90.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh
+bash -n /srv/forge/android/nx549j/scripts/nx549j-run-attempt90.sh /srv/forge/android/nx549j/scripts/nx549j-run-latest.sh /srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh
 ```
+
+Host-side summary verification:
+
+- FACT: synthetic runtime directory
+  `/tmp/nx549j-summary-bcb-fields-*` with `misc-first-page-strings.txt`
+  containing `last_stage=0x55` and `last_name=initcall_fs_done` produced
+  `SUMMARY.md` with:
+  - `Target marker evidence: PRESENT`
+  - `BCB stage stamp: PRESENT`
+  - `Last stage: 0x55`
+  - `Last stage name: initcall_fs_done`
