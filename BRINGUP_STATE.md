@@ -4626,3 +4626,128 @@ Rollback condition:
 
 - None; this is no-write evidence of the current external connectivity
   blocker.
+
+2026-05-30 attempt98/99 setup-tail capture and attempt100 pre-reset split:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: attempt98 and attempt99 were flashed and captured after
+  manual recovery; attempt100 is flashed and boot-partition verified, but its
+  post-timeout recovery capture is still blocked on `30785d1a` being missing
+  from the reverse ADB server.
+
+Hypothesis:
+
+- HYPOTHESIS: the current earliest proven target-kernel blocker is between
+  `FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET` (`0x85`) and the first marker
+  after `early_ioremap_reset()`. Attempt99 added a linear ramoops marker after
+  `early_ioremap_reset()` to avoid relying on normal ioremap. Attempt100 adds
+  `0x8e setup_before_reset_splash_done` immediately after the pre-reset
+  splashprobe and before `early_ioremap_reset()` to split splashprobe from the
+  reset call itself.
+
+Evidence:
+
+- FACT: attempt98 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers`.
+- FACT: attempt98 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/boot-setup-tail-markers-120s.img`.
+- FACT: attempt98 boot SHA-256:
+  `2675aec9942893a45f30de6fe476466101d2d11429322e46e2b17ceac626ef99`.
+- FACT: attempt98 flash summary:
+  `/srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/runtime/flash-boot-bcb-20260530-015437/SUMMARY.md`.
+- FACT: attempt98 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, last decoded marker
+  `0x85 setup_before_ioremap_reset`, pstore file count `1`, preboot pstore
+  clear `PASS`, and misc restore `PASS`.
+- FACT: attempt99 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt99-20260530-linear-post-ioremap-reset`.
+- FACT: attempt99 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt99-20260530-linear-post-ioremap-reset/boot-linear-post-ioremap-reset-120s.img`.
+- FACT: attempt99 boot SHA-256:
+  `899b0eb55aa5f473fd54458480381b47a9f83b06665e0b3690be3f33531e2f6d`.
+- FACT: attempt99 flash summary:
+  `/srv/forge/work/nx549j-preserve/release-attempt99-20260530-linear-post-ioremap-reset/runtime/flash-boot-bcb-20260530-021249/SUMMARY.md`.
+- FACT: attempt99 summary again reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, last decoded marker
+  `0x85 setup_before_ioremap_reset`, pstore file count `1`, preboot pstore
+  clear `PASS`, and misc restore `PASS`.
+- FACT: attempt100 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker`.
+- FACT: attempt100 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker/boot-before-reset-splash-marker-120s.img`.
+- FACT: attempt100 boot SHA-256:
+  `b125778622e855afebf60c11565d25c8ba0f5914078aaef68b6250cd7e0759d4`.
+- FACT: attempt100 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: attempt100 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker/runtime/flash-boot-bcb-20260530-022707`.
+- FACT: attempt100 boot partition prefix SHA-256 matched the local boot image:
+  `b125778622e855afebf60c11565d25c8ba0f5914078aaef68b6250cd7e0759d4`.
+- FACT: attempt100 timed out waiting for automatic recovery and is currently
+  waiting for manual recovery capture; local ADB on reverse port `15038`
+  reports no attached devices, so target marker evidence is not yet available.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `0x8d setup_ioremap_reset_returned_linear` and
+    `0x8e setup_before_reset_splash_done`, plus
+    `frgmark_linear_ramoops()`.
+- `arch/arm64/kernel/frgmark.c`
+  - adds names for `0x8d` and `0x8e`, allows setup-stage ramoops slots through
+    `0x8e`, and writes a linear phys-to-virt ramoops record after
+    `early_ioremap_reset()` can no longer rely on early ioremap.
+- `arch/arm64/kernel/setup.c`
+  - stamps `0x8e` after the pre-reset splashprobe and writes `0x8d` via the
+    linear ramoops helper after `early_ioremap_reset()` returns.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - keeps host marker decoding in sync for `0x8d` and `0x8e`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - keeps the debug UI marker table in sync for `0x8d` and `0x8e`.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the new marker strings in release verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - updates the setup marker coverage note to `0x80..0x8e`.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt100*.sh` and latest
+  runner scripts
+  - retarget stable flash automation to attempt100.
+
+Why each file changed:
+
+- The kernel marker edits are the narrowest split for the repeated `0x85`
+  stop and do not intentionally skip or disable a subsystem.
+- The linear ramoops helper avoids using the normal `ioremap()` path for the
+  first post-`early_ioremap_reset()` marker, so a missing `0x8d` is meaningful
+  for the reset/splashprobe split instead of only proving normal mapping is
+  unavailable.
+- The decoder/UI/verification edits keep artifact and marker identity
+  synchronized with the kernel patch, as required before interpreting the next
+  capture.
+- The runner edits ensure the user-facing `latest` flash path writes the
+  exact verified attempt100 image.
+
+Expected next marker:
+
+- If attempt100 still decodes as `0x85 setup_before_ioremap_reset`, the
+  blocker is inside or before `nx549j_splashprobe(NX549J_SPLASH_STAGE_BEFORE_IOREMAP_RESET)`.
+- If attempt100 decodes as `0x8e setup_before_reset_splash_done`, the
+  blocker is inside `early_ioremap_reset()` before return.
+- If attempt100 decodes as `0x8d setup_ioremap_reset_returned_linear`, the
+  blocker moved after `early_ioremap_reset()` and before normal marker
+  remapping or the next setup-tail stage.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker boot-before-reset-splash-marker-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- `ADB_PORT=15038 ADB_PORTS='15038' scripts/nx549j-watch-reverse-adb-and-run-latest.sh`
+- After manual recovery appears, inspect:
+  `/srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker/runtime/flash-boot-bcb-20260530-022707/SUMMARY.md`.
+
+Rollback condition:
+
+- Revert this diagnostic split if attempt100 proves the added markers cause a
+  regression before `0x85`, if marker IDs diverge from host decoders, or after
+  the next capture identifies the exact side of the `0x85` gap.

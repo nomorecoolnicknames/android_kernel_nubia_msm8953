@@ -49,6 +49,8 @@
 #define FRGMARK_STAGE_SETUP_MPIDR_HASH_DONE		0x8a
 #define FRGMARK_STAGE_SETUP_BOOT_ARGS_DONE		0x8b
 #define FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE		0x8c
+#define FRGMARK_STAGE_SETUP_IOREMAP_RESET_RETURNED	0x8d
+#define FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE	0x8e
 
 #define FRGMARK_STAGE_INITCALL_EARLY_DONE		0x50
 #define FRGMARK_STAGE_INITCALL_CORE_DONE		0x51
@@ -86,6 +88,7 @@
 #ifdef CONFIG_ARM64
 void __init frgmark_init_iomap(void);
 void __init frgmark_early(u8 stage);
+void __init frgmark_linear_ramoops(u8 stage);
 void __init frgmark_recovery_timeout_arm(void);
 void frgmark_recovery_bcb_kick(const char *reason);
 void frgmark_userspace_reached(void);
@@ -93,6 +96,7 @@ void frgmark(u8 stage);
 #else
 static inline void frgmark_init_iomap(void) {}
 static inline void frgmark_early(u8 stage) {}
+static inline void frgmark_linear_ramoops(u8 stage) {}
 static inline void frgmark_recovery_timeout_arm(void) {}
 static inline void frgmark_recovery_bcb_kick(const char *reason) {}
 static inline void frgmark_userspace_reached(void) {}

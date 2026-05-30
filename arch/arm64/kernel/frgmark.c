@@ -22,6 +22,7 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <soc/qcom/watchdog.h>
+#include <asm/cacheflush.h>
 #include <asm/early_ioremap.h>
 
 #define FRG_IMEM_PA   0x08600040UL
@@ -195,6 +196,10 @@ static const char *frgmark_stage_name(u8 stage)
 		return "setup_boot_args_done";
 	case FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE:
 		return "setup_random_pool_done";
+	case FRGMARK_STAGE_SETUP_IOREMAP_RESET_RETURNED:
+		return "setup_ioremap_reset_returned_linear";
+	case FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE:
+		return "setup_before_reset_splash_done";
 	case FRGMARK_STAGE_INITCALL_EARLY_DONE:
 		return "initcall_early_done";
 	case FRGMARK_STAGE_INITCALL_CORE_DONE:
@@ -404,7 +409,7 @@ static void frgmark_write_ramoops_record(void __iomem *ramoops, u8 stage)
 	__raw_writel(v, ramoops + FRG_RAMOOPS_SLOT_LATEST);
 
 	if (stage >= FRGMARK_STAGE_HEAD_ENTRY &&
-	    stage <= FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET)
+	    stage <= FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((stage - FRGMARK_STAGE_HEAD_ENTRY) << 2);
 	else
@@ -436,6 +441,25 @@ void __init frgmark_early(u8 stage)
 
 	pr_emerg("FRGmark early stage=%02x name=%s imem=%d ramoops=%d\n",
 		 stage, frgmark_stage_name(stage), !!imem, !!ramoops);
+}
+
+void __init frgmark_linear_ramoops(u8 stage)
+{
+	void *ramoops;
+
+	frg_last_stage = stage;
+	if (!pfn_valid(FRG_RAMOOPS_PA >> PAGE_SHIFT)) {
+		pr_emerg("FRGmark linear stage=%02x name=%s pfn-invalid pa=0x%lx\n",
+			 stage, frgmark_stage_name(stage), FRG_RAMOOPS_PA);
+		return;
+	}
+
+	ramoops = phys_to_virt(FRG_RAMOOPS_PA);
+	frgmark_write_ramoops_record((void __iomem *)ramoops, stage);
+	__flush_dcache_area(ramoops, FRG_RAMOOPS_OLD_SIZE);
+	mb();
+	pr_emerg("FRGmark linear stage=%02x name=%s ramoops=%p pa=0x%lx\n",
+		 stage, frgmark_stage_name(stage), ramoops, FRG_RAMOOPS_PA);
 }
 
 static void frgmark_program_early_wdt(unsigned int seconds)

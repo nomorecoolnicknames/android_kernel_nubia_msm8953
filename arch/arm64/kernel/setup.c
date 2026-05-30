@@ -315,8 +315,10 @@ void __init setup_arch(char **cmdline_p)
 	request_standard_resources();
 	frgmark_early(FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET);
 	nx549j_splashprobe(NX549J_SPLASH_STAGE_BEFORE_IOREMAP_RESET);
+	frgmark_early(FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE);
 
 	early_ioremap_reset();
+	frgmark_linear_ramoops(FRGMARK_STAGE_SETUP_IOREMAP_RESET_RETURNED);
 	frgmark_init_iomap();
 	frgmark(FRGMARK_STAGE_SETUP_IOREMAP_RESET_DONE);
 
