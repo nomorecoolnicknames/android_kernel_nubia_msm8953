@@ -4551,3 +4551,44 @@ Rollback condition:
   themselves are the regression, if marker IDs diverge from the decoder table,
   or after a later capture advances far enough that this diagnostic split is no
   longer needed.
+
+2026-05-30 attempt98 reverse ADB watcher:
+
+- Patch category: DIAGNOSTIC tooling.
+- Runtime status: host-side automation only; no device write occurred because
+  the current `15038` preflight still reports `NO_REVERSE_LISTENER`.
+
+Evidence:
+
+- FACT: added `/srv/forge/android/nx549j/scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- FACT: the watcher polls `ADB_PORTS`, runs the read-only
+  `nx549j-check-reverse-adb.sh` for each port, and only hands off to
+  `nx549j-run-unattended-latest.sh` after the checker reports
+  `TARGET_RECOVERY_READY` for serial `30785d1a`.
+- FACT: no-listener smoke command
+  `WAIT_TUNNEL_SECONDS=1 POLL_SECONDS=1 ADB_PORTS='15038'
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh` exited status `2`,
+  recorded only `NO_REVERSE_LISTENER` preflight rows, and did not start the
+  flash runner.
+- FACT: release-local runner snapshot now includes
+  `nx549j-watch-reverse-adb-and-run-latest.sh`.
+- FACT: `sha256sum -c` passed for both attempt98 `SHA256SUMS` and
+  `runner-snapshot-20260530/SHA256SUMS` after adding the watcher.
+- FACT: `scripts/nx549j-verify-release-artifact.sh
+  /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers
+  boot-setup-tail-markers-120s.img` regenerated `VERIFY.md` with all gates
+  still PASS.
+
+Expected next action:
+
+- If the Windows tunnel timing is uncertain, run
+  `ADB_PORTS="15038 15037"
+  /srv/forge/android/nx549j/scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+  It should wait until `30785d1a` is visible in recovery, then flash attempt98
+  and collect the same unattended evidence as the latest runner.
+
+Rollback condition:
+
+- Revert the watcher if it can start the flash runner without
+  `TARGET_RECOVERY_READY`, scans an unintended serial, or hides the runner exit
+  code. Current smoke covered the no-listener path.
