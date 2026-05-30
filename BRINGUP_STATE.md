@@ -4951,7 +4951,9 @@ Rollback condition:
 2026-05-30 attempt104 rest_init/kernel_init_freeable marker split:
 
 - Patch category: DIAGNOSTIC.
-- Runtime status: built and verified. Flash/capture is pending.
+- Runtime status: built, verified, flashed to `30785d1a`, and timed out waiting
+  for automatic recovery or userspace. Post-timeout capture is pending until the
+  device is manually returned to recovery.
 
 Hypothesis:
 
@@ -4976,6 +4978,13 @@ Evidence:
 - FACT: attempt104 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
   required symbols, required marker strings, ramdisk userspace ACK, no-BCB
   no-loop gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: attempt104 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runtime/flash-boot-bcb-20260530-144044`.
+- FACT: attempt104 boot partition prefix SHA-256 matched the local boot image:
+  `43f0458cbd629653a27c69ed534fc55c7ae8d604326657314fb4b9c534e11a0f`.
+- FACT: attempt104 wait result was `automatic-recovery-timeout`; no recovery or
+  Android `device` ADB state for `30785d1a` appeared inside the 260-second
+  window.
 
 Files changed:
 
@@ -5026,6 +5035,8 @@ Verification commands:
 - `(cd /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
 - Flash from recovery:
   `ADB_PORT=15038 ADB_PORTS=15038 /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runner-snapshot-20260530/nx549j-run-attempt104.sh`
+- After manual recovery appears:
+  `ADB_HOST=127.0.0.1 ADB_PORT=15038 SERIAL=30785d1a /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runner-snapshot-20260530/nx549j-finish-flash-timeout.sh /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runtime/flash-boot-bcb-20260530-144044`
 
 Rollback condition:
 
