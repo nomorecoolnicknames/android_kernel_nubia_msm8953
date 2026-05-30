@@ -158,6 +158,22 @@ static const char *frgmark_stage_name(u8 stage)
 		return "recovery_timeout_reboot";
 	case FRGMARK_STAGE_USERSPACE_ACK:
 		return "userspace_ack";
+	case FRGMARK_STAGE_REST_INIT_BEGIN:
+		return "rest_init_begin";
+	case FRGMARK_STAGE_REST_INIT_KERNEL_INIT_THREAD_DONE:
+		return "rest_init_kernel_init_thread_done";
+	case FRGMARK_STAGE_REST_INIT_KTHREADD_THREAD_DONE:
+		return "rest_init_kthreadd_thread_done";
+	case FRGMARK_STAGE_REST_INIT_KTHREADD_COMPLETE_DONE:
+		return "rest_init_kthreadd_complete_done";
+	case FRGMARK_STAGE_REST_INIT_SCHEDULE_ENTER:
+		return "rest_init_schedule_enter";
+	case FRGMARK_STAGE_KERNEL_INIT_WAIT_KTHREADD_BEGIN:
+		return "kernel_init_wait_kthreadd_begin";
+	case FRGMARK_STAGE_KERNEL_INIT_WAIT_KTHREADD_DONE:
+		return "kernel_init_wait_kthreadd_done";
+	case FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_BEGIN:
+		return "kernel_init_smp_prepare_begin";
 	case FRGMARK_STAGE_HEAD_ENTRY:
 		return "head_entry";
 	case FRGMARK_STAGE_HEAD_ARGS_PRESERVED:
@@ -222,6 +238,26 @@ static const char *frgmark_stage_name(u8 stage)
 		return "recovery_no_bcb_grace";
 	case FRGMARK_STAGE_RECOVERY_NO_BCB_RESET:
 		return "recovery_no_bcb_reset";
+	case FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE:
+		return "kernel_init_smp_prepare_done";
+	case FRGMARK_STAGE_KERNEL_INIT_WORKQUEUE_DONE:
+		return "kernel_init_workqueue_done";
+	case FRGMARK_STAGE_KERNEL_INIT_BCB_KICK_DONE:
+		return "kernel_init_bcb_kick_done";
+	case FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_INITCALLS_DONE:
+		return "kernel_init_pre_smp_initcalls_done";
+	case FRGMARK_STAGE_KERNEL_INIT_LOCKUP_DETECTOR_DONE:
+		return "kernel_init_lockup_detector_done";
+	case FRGMARK_STAGE_KERNEL_INIT_SMP_INIT_DONE:
+		return "kernel_init_smp_init_done";
+	case FRGMARK_STAGE_KERNEL_INIT_SCHED_SMP_DONE:
+		return "kernel_init_sched_smp_done";
+	case FRGMARK_STAGE_KERNEL_INIT_PAGE_ALLOC_LATE_DONE:
+		return "kernel_init_page_alloc_late_done";
+	case FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_BEGIN:
+		return "kernel_init_basic_setup_begin";
+	case FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE:
+		return "kernel_init_basic_setup_done";
 	case FRGMARK_STAGE_MSM_DRM_REGISTER_BEGIN:
 		return "msm_drm_register_begin";
 	case FRGMARK_STAGE_MSM_DRM_REGISTER_DONE:
@@ -414,6 +450,11 @@ static void frgmark_write_ramoops_record(void __iomem *ramoops, u8 stage)
 	    stage <= FRGMARK_STAGE_SETUP_IOREMAP_RESET_SKIPPED)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((stage - FRGMARK_STAGE_HEAD_ENTRY) << 2);
+	else if (stage >= FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE &&
+		 stage <= FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE)
+		slot = FRG_RAMOOPS_SLOT_BASE +
+		       ((0x20 + stage -
+			 FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE) << 2);
 	else
 		slot = FRG_RAMOOPS_SLOT_BASE + ((stage & 0x1f) << 2);
 

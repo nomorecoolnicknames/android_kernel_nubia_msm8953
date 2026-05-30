@@ -66,6 +66,7 @@
 #include <linux/kgdb.h>
 #include <linux/ftrace.h>
 #include <linux/async.h>
+#include <linux/frgmark.h>
 #include <linux/kmemcheck.h>
 #include <linux/sfi.h>
 #include <linux/shmem_fs.h>
@@ -386,6 +387,7 @@ static noinline void __ref rest_init(void)
 {
 	int pid;
 
+	frgmark(FRGMARK_STAGE_REST_INIT_BEGIN);
 	rcu_scheduler_starting();
 	/*
 	 * We need to spawn init first so that it obtains pid 1, however
@@ -393,18 +395,22 @@ static noinline void __ref rest_init(void)
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
 	kernel_thread(kernel_init, NULL, CLONE_FS);
+	frgmark(FRGMARK_STAGE_REST_INIT_KERNEL_INIT_THREAD_DONE);
 	numa_default_policy();
 	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES);
+	frgmark(FRGMARK_STAGE_REST_INIT_KTHREADD_THREAD_DONE);
 	rcu_read_lock();
 	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
 	rcu_read_unlock();
 	complete(&kthreadd_done);
+	frgmark(FRGMARK_STAGE_REST_INIT_KTHREADD_COMPLETE_DONE);
 
 	/*
 	 * The boot idle thread must execute schedule()
 	 * at least once to get things moving:
 	 */
 	init_idle_bootup_task(current);
+	frgmark(FRGMARK_STAGE_REST_INIT_SCHEDULE_ENTER);
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */
 	cpu_startup_entry(CPUHP_ONLINE);
@@ -478,8 +484,6 @@ static void __init mm_init(void)
 	ioremap_huge_init();
 	kaiser_init();
 }
-
-#include <linux/frgmark.h>
 
 asmlinkage __visible void __init start_kernel(void)
 {
@@ -1027,7 +1031,9 @@ static noinline void __init kernel_init_freeable(void)
 	/*
 	 * Wait until kthreadd is all set-up.
 	 */
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_WAIT_KTHREADD_BEGIN);
 	wait_for_completion(&kthreadd_done);
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_WAIT_KTHREADD_DONE);
 
 	/* Now the scheduler is fully set up and can do blocking allocations */
 	gfp_allowed_mask = __GFP_BITS_MASK;
@@ -1043,20 +1049,31 @@ static noinline void __init kernel_init_freeable(void)
 
 	cad_pid = task_pid(current);
 
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_BEGIN);
 	smp_prepare_cpus(setup_max_cpus);
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE);
 
 	workqueue_init();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_WORKQUEUE_DONE);
 	frgmark_recovery_bcb_kick("kernel-init-workqueue-ready");
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_BCB_KICK_DONE);
 
 	do_pre_smp_initcalls();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_INITCALLS_DONE);
 	lockup_detector_init();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_LOCKUP_DETECTOR_DONE);
 
 	smp_init();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_SMP_INIT_DONE);
 	sched_init_smp();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_SCHED_SMP_DONE);
 
 	page_alloc_init_late();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_PAGE_ALLOC_LATE_DONE);
 
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_BEGIN);
 	do_basic_setup();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE);
 	frgmark(FRGMARK_STAGE_KERNEL_FREEABLE_DONE);
 
 	/* Open the /dev/console on the rootfs, this should never fail */

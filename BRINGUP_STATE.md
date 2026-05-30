@@ -4867,9 +4867,8 @@ Rollback condition:
 2026-05-30 attempt103 late setup diagnostic hook isolation:
 
 - Patch category: ISOLATION.
-- Runtime status: built, verified, flashed to `30785d1a`, and timed out waiting
-  for automatic recovery or userspace. Post-timeout capture is pending until the
-  device is manually returned to recovery.
+- Runtime status: built, verified, flashed to `30785d1a`, timed out waiting
+  for automatic recovery or userspace, then captured after manual recovery.
 
 Hypothesis:
 
@@ -4897,6 +4896,19 @@ Evidence:
   `dcf45cb65a47f7954975fa22de6be8a1fcdd97834eb28e601e76788274f25fa9`.
 - FACT: attempt103 wait result was `automatic-recovery-timeout`; no recovery or
   Android `device` ADB state appeared inside the 260-second window.
+- FACT: attempt103 manual recovery capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/runtime/flash-boot-bcb-20260530-135630/after-manual-recovery`.
+- FACT: attempt103 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, preboot pstore clear
+  `PASS`, and misc restore `PASS`.
+- FACT: attempt103 raw marker latest slot at `marker-od.txt` offset `0x40`
+  contains `4652470b`, decoded as `0x0b kernel_init_begin`. The summary's
+  `0x8f` line is an older table entry from grep order and is not the latest
+  slot.
+- INFERENCE: attempt103 passed `setup_arch()`, `trap_init()`, `mm_init()`,
+  scheduler setup, timer setup, `console_init()`, and reached `kernel_init()`.
+  The next unproven area starts inside `kernel_init_freeable()`, before
+  `0x0c kernel_init_freeable_done`.
 
 Files changed:
 
@@ -4935,3 +4947,88 @@ Rollback condition:
 - Revert attempt103 if the capture shows no advancement past `0x8c`, or after
   the next marker proves whether the late diagnostic hooks are safe to remove
   from the active debug branch.
+
+2026-05-30 attempt104 rest_init/kernel_init_freeable marker split:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and verified. Flash/capture is pending.
+
+Hypothesis:
+
+- HYPOTHESIS: because attempt103 reaches `0x0b kernel_init_begin` but never
+  reaches `0x0c kernel_init_freeable_done`, the active hang is now inside
+  `kernel_init_freeable()` or the corresponding `rest_init()` handoff that
+  completes `kthreadd_done`. attempt104 adds markers around the first blocking
+  candidates instead of disabling any subsystem.
+
+Evidence:
+
+- FACT: attempt103 marker decode includes `0x0b kernel_init_begin` as the
+  latest raw marker slot.
+- FACT: attempt103 does not include `0x0c kernel_init_freeable_done`, initcall
+  markers, userspace markers, or recovery timeout reset markers.
+- FACT: attempt104 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers`.
+- FACT: attempt104 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/boot-kernel-init-freeable-markers-120s.img`.
+- FACT: attempt104 boot SHA-256:
+  `43f0458cbd629653a27c69ed534fc55c7ae8d604326657314fb4b9c534e11a0f`.
+- FACT: attempt104 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `0x18..0x1f` rest/kernel-init handoff markers and `0x60..0x69`
+    later `kernel_init_freeable()` markers.
+- `arch/arm64/kernel/frgmark.c`
+  - adds names for the new markers and preserves `0x60..0x69` in separate
+    ramoops table slots.
+- `init/main.c`
+  - marks `rest_init()` thread creation/completion points and
+    `kernel_init_freeable()` milestones through `do_basic_setup()`.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes the new marker IDs.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - displays the new marker names in the debug UI.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - classifies `rest_*` markers as earlier-stage target markers.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the new critical marker strings in release verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt104*.sh` and latest
+  runner scripts
+  - retarget flashing to the exact attempt104 image.
+
+Why each file changed:
+
+- The kernel edits are diagnostic-only markers on the earliest proven
+  unpassed path. No driver, DTS, Kconfig, or subsystem behavior is disabled.
+- Decoder/UI/verification changes keep the marker table synchronized with the
+  kernel marker header.
+- Runner changes ensure future flashes use the exact verified attempt104 image
+  and still refuse non-`30785d1a` serials.
+
+Expected next marker:
+
+- `0x1d` without `0x1e` means `kernel_init` is stuck waiting for
+  `kthreadd_done`.
+- `0x1f` without `0x60` means `smp_prepare_cpus()` is the next blocker.
+- `0x68` without `0x69` means the blocker is inside `do_basic_setup()` or one
+  of its initcall stages.
+- `0x0f`/`0x0c` or later means `kernel_init_freeable()` completes and the next
+  blocker is after basic setup.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers boot-kernel-init-freeable-markers-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- Flash from recovery:
+  `ADB_PORT=15038 ADB_PORTS=15038 /srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runner-snapshot-20260530/nx549j-run-attempt104.sh`
+
+Rollback condition:
+
+- Revert attempt104 diagnostic markers after the next capture narrows the
+  `kernel_init_freeable()` blocker, or if marker insertion changes the last
+  stage before `0x0b`.
