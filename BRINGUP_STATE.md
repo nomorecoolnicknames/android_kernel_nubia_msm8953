@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## Objective
 
@@ -4433,3 +4433,121 @@ Expected next action:
 Rollback condition:
 
 - None; this is an evidence-only preflight with no device writes.
+
+2026-05-30 attempt97 runtime capture and attempt98 setup-tail markers:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: attempt97 was flashed and captured after manual recovery;
+  attempt98 is built, verified, and ready to flash, but not yet flashed because
+  the current ADB listener does not expose serial `30785d1a`.
+
+Hypothesis:
+
+- HYPOTHESIS: the current earliest proven blocker is in the setup tail at or
+  immediately after `early_ioremap_reset()`. Attempt97 proved execution reaches
+  `FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET` (`0x85`) and then does not reach
+  userspace ACK, the 120s recovery timeout marker, or automatic recovery.
+  Attempt98 adds only setup-tail markers after `early_ioremap_reset()` to split
+  that gap before changing behavior.
+
+Evidence:
+
+- FACT: attempt97 flash run directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/flash-boot-bcb-20260529-235419`.
+- FACT: attempt97 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/boot-userspace-ack-timeout-120s.img`.
+- FACT: attempt97 boot SHA-256:
+  `a0a40ab9539b4793ae772fa7a1f02793163fae653f9ef83805cbe51cf4666893`.
+- FACT: attempt97 recovery capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/flash-boot-bcb-20260529-235419/after-manual-recovery-20260529-235419`.
+- FACT: attempt97 summary:
+  `/srv/forge/work/nx549j-preserve/release-attempt97-20260529-userspace-ack-timeout/runtime/flash-boot-bcb-20260529-235419/SUMMARY.md`.
+- FACT: attempt97 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, last decoded marker
+  `0x85 setup_before_ioremap_reset`, BCB stage stamp `ABSENT`, pstore file
+  count `1`, preboot pstore clear `PASS`, and misc restore `PASS`.
+- FACT: attempt98 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers`.
+- FACT: attempt98 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/boot-setup-tail-markers-120s.img`.
+- FACT: attempt98 boot SHA-256:
+  `2675aec9942893a45f30de6fe476466101d2d11429322e46e2b17ceac626ef99`.
+- FACT: attempt98 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk init userspace ACK,
+  no-BCB no-loop gate, pstore config, serial early console config, and ramoops
+  DTB.
+- FACT: attempt98 `SHA256SUMS` passed from the release directory, and
+  `runner-snapshot-20260530/SHA256SUMS` also passed.
+- FACT: the current preflight on `ADB_PORT=15038` reports
+  `NO_REVERSE_LISTENER`; local `adb devices -l` on port `5037` lists two other
+  serials and not `30785d1a`, so no flash was attempted.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds setup-tail marker IDs `0x86..0x8c`.
+- `arch/arm64/kernel/frgmark.c`
+  - adds decoder names for setup-tail marker IDs.
+- `arch/arm64/kernel/setup.c`
+  - stamps setup-tail markers after `early_ioremap_reset()`, PSCI init,
+    boot CPU ops, SMP CPU enumeration, MPIDR hash build, boot-args check, and
+    random pool init.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - updates the host marker decoder for the same setup-tail IDs.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - updates the debug UI marker-name table for the same setup-tail IDs.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt98.sh`
+  - adds the attempt98 flash runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt98-unattended.sh`
+  - adds the attempt98 unattended runner.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-latest.sh`
+  - retargets latest to attempt98.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-unattended-latest.sh`
+  - retargets latest unattended to attempt98.
+- `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-run-latest.sh`
+  - updates the default attempt directory to attempt98 and keeps env override.
+- `/srv/forge/android/nx549j/scripts/nx549j-wait-recovery-and-finish-latest.sh`
+  - updates the default attempt directory to attempt98.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - updates the marker coverage note for head/setup/timeout/initcall/userspace
+    and display markers.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the new setup-tail marker strings in the release verification
+    gate.
+
+Why each file changed:
+
+- The kernel marker edits are the narrowest instrumentation for the proven
+  `0x85` gap; they do not intentionally change the success path except for
+  writing marker bytes.
+- The decoder/UI/script edits keep the marker table synchronized with the
+  kernel header and prevent later captures from being misclassified as unknown
+  stages.
+- The attempt98 runner edits make the stable latest command flash the exact
+  verified artifact and keep the existing timeout/manual-recovery collection
+  behavior.
+
+Expected next marker:
+
+- If attempt98 still stops at `0x85 setup_before_ioremap_reset`, investigate
+  `early_ioremap_reset()` return path and `frgmark_init_iomap()` availability
+  immediately after it.
+- If attempt98 reaches `0x86..0x8c`, continue from the last named setup-tail
+  marker.
+- If attempt98 reaches `0x15`, `0x16`, or `0x17`, classify userspace handoff,
+  recovery timeout, or userspace ACK respectively before changing the kernel.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers boot-setup-tail-markers-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- `ADB_PORT=15038 scripts/nx549j-check-reverse-adb.sh /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/runtime/reverse-adb-check-$(date -u +%Y%m%d-%H%M%S)`
+- `ADB_PORT=15038 scripts/nx549j-run-unattended-latest.sh`
+
+Rollback condition:
+
+- Revert the setup-tail marker patch if attempt98 proves the markers
+  themselves are the regression, if marker IDs diverge from the decoder table,
+  or after a later capture advances far enough that this diagnostic split is no
+  longer needed.

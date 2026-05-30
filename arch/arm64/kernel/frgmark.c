@@ -181,6 +181,20 @@ static const char *frgmark_stage_name(u8 stage)
 		return "setup_paging_done";
 	case FRGMARK_STAGE_SETUP_BEFORE_IOREMAP_RESET:
 		return "setup_before_ioremap_reset";
+	case FRGMARK_STAGE_SETUP_IOREMAP_RESET_DONE:
+		return "setup_ioremap_reset_done";
+	case FRGMARK_STAGE_SETUP_PSCI_DONE:
+		return "setup_psci_done";
+	case FRGMARK_STAGE_SETUP_BOOTCPU_OPS_DONE:
+		return "setup_bootcpu_ops_done";
+	case FRGMARK_STAGE_SETUP_SMP_CPUS_DONE:
+		return "setup_smp_cpus_done";
+	case FRGMARK_STAGE_SETUP_MPIDR_HASH_DONE:
+		return "setup_mpidr_hash_done";
+	case FRGMARK_STAGE_SETUP_BOOT_ARGS_DONE:
+		return "setup_boot_args_done";
+	case FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE:
+		return "setup_random_pool_done";
 	case FRGMARK_STAGE_INITCALL_EARLY_DONE:
 		return "initcall_early_done";
 	case FRGMARK_STAGE_INITCALL_CORE_DONE:
