@@ -4751,3 +4751,115 @@ Rollback condition:
 - Revert this diagnostic split if attempt100 proves the added markers cause a
   regression before `0x85`, if marker IDs diverge from host decoders, or after
   the next capture identifies the exact side of the `0x85` gap.
+
+2026-05-30 attempt101/102 early-ioremap and frgmark-iomap isolation:
+
+- Patch category: ISOLATION.
+- Runtime status: attempt101 was flashed and captured after manual recovery;
+  attempt102 is built, verified, flashed, and timed out waiting for automatic
+  recovery, but its post-timeout capture is still pending because
+  `30785d1a` has not yet reappeared in recovery.
+
+Hypothesis:
+
+- HYPOTHESIS: the repeated bootlogo hang is currently dominated by diagnostic
+  marker plumbing in the `setup_arch()` tail rather than a later userspace
+  handoff. attempt100 proved the pre-reset splashprobe returns and reaches
+  `0x8e`. attempt101 skipped `early_ioremap_reset()` and proved execution
+  reaches `0x8f`, then stops before `0x86`. That isolates the next blocker to
+  `frgmark_init_iomap()` or the first normal `frgmark()` call after it.
+  attempt102 defers that normal-ioremap diagnostic setup and uses the already
+  proven early marker path for the rest of `setup_arch()`.
+
+Evidence:
+
+- FACT: attempt100 flash summary:
+  `/srv/forge/work/nx549j-preserve/release-attempt100-20260530-before-reset-splash-marker/runtime/flash-boot-bcb-20260530-022707/SUMMARY.md`.
+- FACT: attempt100 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, last decoded marker
+  `0x8e setup_before_reset_splash_done`, preboot pstore clear `PASS`, and misc
+  restore `PASS`.
+- FACT: attempt101 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt101-20260530-skip-early-ioremap-reset-isolation`.
+- FACT: attempt101 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt101-20260530-skip-early-ioremap-reset-isolation/boot-skip-early-ioremap-reset-isolation-120s.img`.
+- FACT: attempt101 boot SHA-256:
+  `c854fe29e8953bfec0dc3fe691d0c29ad679ab5a8d79c0c1c32003d5fa4a8e8e`.
+- FACT: attempt101 flash summary:
+  `/srv/forge/work/nx549j-preserve/release-attempt101-20260530-skip-early-ioremap-reset-isolation/runtime/flash-boot-bcb-20260530-131139/SUMMARY.md`.
+- FACT: attempt101 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, last decoded marker
+  `0x8f setup_ioremap_reset_skipped_isolation`, preboot pstore clear `PASS`,
+  and misc restore `PASS`.
+- FACT: attempt102 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap`.
+- FACT: attempt102 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap/boot-defer-frgmark-normal-iomap-120s.img`.
+- FACT: attempt102 boot SHA-256:
+  `064dea4b53f4baa4efa326ece43627ac5570bfca7ec5995f013654e5b2120a8b`.
+- FACT: attempt102 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: attempt102 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap/runtime/flash-boot-bcb-20260530-132928`.
+- FACT: attempt102 boot partition prefix SHA-256 matched the local boot image:
+  `064dea4b53f4baa4efa326ece43627ac5570bfca7ec5995f013654e5b2120a8b`.
+- FACT: attempt102 timed out waiting for automatic recovery; the wait loop was
+  stopped after repeated `target-not-ready serial=30785d1a state='missing'`.
+  No attempt102 target marker has been decoded yet.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `0x8f setup_ioremap_reset_skipped_isolation`.
+- `arch/arm64/kernel/frgmark.c`
+  - adds the `0x8f` marker name, allows the setup ramoops slot through `0x8f`,
+    and makes `frgmark()` fall back to `frgmark_early()` when normal IMEM
+    mapping is unavailable.
+- `arch/arm64/kernel/setup.c`
+  - temporarily skips `early_ioremap_reset()`, defers `frgmark_init_iomap()`,
+    and uses early marker writes for the remaining setup-tail stages.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - keeps host marker decoding in sync for `0x8f`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - keeps the debug UI marker table in sync for `0x8f`.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the `0x8f` marker string in release verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - updates the setup marker coverage note to `0x80..0x8f`.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt101*.sh`,
+  `/srv/forge/android/nx549j/scripts/nx549j-run-attempt102*.sh`, and latest
+  runner scripts
+  - retarget flash automation to the exact verified boot images.
+
+Why each file changed:
+
+- The kernel edits are scoped isolation of the earliest proven hang. They do
+  not disable unrelated drivers or late subsystems.
+- The fallback to `frgmark_early()` preserves marker visibility after deferring
+  normal ioremap, so a future stop point is still recovery-readable.
+- The decoder/UI/verification edits prevent the new marker from being decoded
+  as an unknown stage.
+
+Expected next marker:
+
+- If attempt102 reaches `0x86..0x8c`, then diagnostic normal-ioremap setup was
+  blocking the setup tail.
+- If attempt102 reaches `0x02` or later low-numbered `init/main.c` markers,
+  `setup_arch()` returned and the next blocker is after it.
+- If attempt102 still stops at `0x8f`, the blocker is immediately after the
+  skip marker before the first deferred early marker.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap boot-defer-frgmark-normal-iomap-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- After manual recovery appears:
+  `ADB_PORT=15038 scripts/nx549j-wait-recovery-and-finish-latest.sh /srv/forge/work/nx549j-preserve/release-attempt102-20260530-defer-frgmark-normal-iomap/runtime/flash-boot-bcb-20260530-132928`.
+
+Rollback condition:
+
+- Revert attempt101/102 isolation once the next capture shows whether
+  `setup_arch()` advances past `0x8f`, or if the early fallback creates a new
+  marker regression before `0x8f`.

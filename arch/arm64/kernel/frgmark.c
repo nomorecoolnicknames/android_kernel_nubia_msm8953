@@ -200,6 +200,8 @@ static const char *frgmark_stage_name(u8 stage)
 		return "setup_ioremap_reset_returned_linear";
 	case FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE:
 		return "setup_before_reset_splash_done";
+	case FRGMARK_STAGE_SETUP_IOREMAP_RESET_SKIPPED:
+		return "setup_ioremap_reset_skipped_isolation";
 	case FRGMARK_STAGE_INITCALL_EARLY_DONE:
 		return "initcall_early_done";
 	case FRGMARK_STAGE_INITCALL_CORE_DONE:
@@ -409,7 +411,7 @@ static void frgmark_write_ramoops_record(void __iomem *ramoops, u8 stage)
 	__raw_writel(v, ramoops + FRG_RAMOOPS_SLOT_LATEST);
 
 	if (stage >= FRGMARK_STAGE_HEAD_ENTRY &&
-	    stage <= FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE)
+	    stage <= FRGMARK_STAGE_SETUP_IOREMAP_RESET_SKIPPED)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((stage - FRGMARK_STAGE_HEAD_ENTRY) << 2);
 	else
@@ -1069,7 +1071,7 @@ void frgmark(u8 stage)
 {
 	frg_last_stage = stage;
 	if (!frg_imem) {
-		frgmark_write_ramoops_record(frg_ramoops, stage);
+		frgmark_early(stage);
 		frgmark_maybe_force_reset(stage);
 		frgmark_maybe_force_panic(stage);
 		return;

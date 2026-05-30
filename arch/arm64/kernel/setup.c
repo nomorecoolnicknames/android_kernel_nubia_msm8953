@@ -317,10 +317,8 @@ void __init setup_arch(char **cmdline_p)
 	nx549j_splashprobe(NX549J_SPLASH_STAGE_BEFORE_IOREMAP_RESET);
 	frgmark_early(FRGMARK_STAGE_SETUP_BEFORE_RESET_SPLASH_DONE);
 
-	early_ioremap_reset();
-	frgmark_linear_ramoops(FRGMARK_STAGE_SETUP_IOREMAP_RESET_RETURNED);
-	frgmark_init_iomap();
-	frgmark(FRGMARK_STAGE_SETUP_IOREMAP_RESET_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_IOREMAP_RESET_SKIPPED);
+	frgmark_early(FRGMARK_STAGE_SETUP_IOREMAP_RESET_DONE);
 
 	if (acpi_disabled) {
 		psci_dt_init();
@@ -328,14 +326,14 @@ void __init setup_arch(char **cmdline_p)
 	} else {
 		psci_acpi_init();
 	}
-	frgmark(FRGMARK_STAGE_SETUP_PSCI_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_PSCI_DONE);
 
 	cpu_read_bootcpu_ops();
-	frgmark(FRGMARK_STAGE_SETUP_BOOTCPU_OPS_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_BOOTCPU_OPS_DONE);
 	smp_init_cpus();
-	frgmark(FRGMARK_STAGE_SETUP_SMP_CPUS_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_SMP_CPUS_DONE);
 	smp_build_mpidr_hash();
-	frgmark(FRGMARK_STAGE_SETUP_MPIDR_HASH_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_MPIDR_HASH_DONE);
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	/*
@@ -359,10 +357,10 @@ void __init setup_arch(char **cmdline_p)
 			"This indicates a broken bootloader or old kernel\n",
 			boot_args[1], boot_args[2], boot_args[3]);
 	}
-	frgmark(FRGMARK_STAGE_SETUP_BOOT_ARGS_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_BOOT_ARGS_DONE);
 
 	init_random_pool();
-	frgmark(FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE);
+	frgmark_early(FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE);
 	nx549j_splashprobe(NX549J_SPLASH_STAGE_SETUP_ARCH_DONE);
 }
 
