@@ -5135,3 +5135,102 @@ Rollback condition:
 - Revert attempt105 diagnostic markers after the next capture identifies the
   pre-SMP initcall index, or if marker insertion changes the last stage before
   `0x62`.
+
+Runtime result:
+
+- FACT: attempt105 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers/runtime/flash-boot-bcb-20260530-150019`.
+- FACT: attempt105 boot partition prefix SHA-256 matched the local boot image:
+  `b433c0d1ef0b15a3851d027ced55b4f4fc8b0bb2ab55c5d96919bfd390ec7b5b`.
+- FACT: attempt105 summary reports boot identity `PASS`, recovery result
+  `CANDIDATE_AUTO`, target marker evidence `PRESENT`, preboot pstore clear
+  `PASS`, and misc restore `PASS`.
+- FACT: because user/manual interaction happened around the wait window, the
+  attempt105 recovery result is not accepted as proof of automatic recovery.
+- FACT: attempt105 latest decoded marker remained
+  `0x62 kernel_init_bcb_kick_done`.
+- FACT: no `0x6a`, `0x6b`, or `0xa0..0xcf` markers were present in attempt105.
+- FACT: attempt105 vmlinux disassembly shows the pre-SMP loop and first
+  `0xa0` marker code are compiled inline immediately after marker `0x62`.
+- INFERENCE: attempt105 does not prove that the first pre-SMP initcall hangs.
+  It instead points to either the return path from `frgmark(0x62)` or the
+  immediate early BCB retry kick/workqueue side effect after `workqueue_init()`.
+
+2026-05-30 attempt106 defer BCB before pre-SMP markers:
+
+- Patch category: DIAGNOSTIC / ISOLATION.
+- Runtime status: built and verified. Flash/capture is next.
+
+Hypothesis:
+
+- HYPOTHESIS: attempt105 stopped after the immediate early BCB retry kick, not
+  because a pre-SMP initcall body ran. Kicking a BCB write worker immediately
+  after `workqueue_init()` may be too early for the block layer and can stop
+  progress before the next marker. attempt106 defers BCB writes until later
+  device/late initcall checkpoints or after `do_basic_setup()`, then adds two
+  markers to prove whether execution gets past the old boundary.
+
+Evidence:
+
+- FACT: attempt106 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt106-20260530-defer-bcb-pre-smp-markers`.
+- FACT: attempt106 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt106-20260530-defer-bcb-pre-smp-markers/boot-defer-bcb-pre-smp-markers-120s.img`.
+- FACT: attempt106 boot SHA-256:
+  `f664f9913a872867b22fec0d38a0e659e201cc3699e5f2b5844d53a58259054b`.
+- FACT: attempt106 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: attempt106 vmlinux disassembly shows the marker sequence after
+  `workqueue_init()` as `0x61`, `0x62`, `0x6a`, `0x6b`, then pre-SMP
+  `0xa0 + index`; the old immediate call to
+  `frgmark_recovery_bcb_kick("kernel-init-workqueue-ready")` is gone.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `0x6a kernel_init_pre_smp_call_begin` and
+    `0x6b kernel_init_pre_smp_loop_begin`.
+- `arch/arm64/kernel/frgmark.c`
+  - names the new markers, preserves them in dedicated ramoops slots, stops
+    scheduling the BCB retry worker during early timeout arming, and only kicks
+    BCB work from safer later checkpoints.
+- `init/main.c`
+  - removes the immediate BCB kick after `workqueue_init()`, adds markers
+    before and inside the pre-SMP loop, and moves the explicit BCB kick after
+    `do_basic_setup()`.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes `0x6a` and `0x6b`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - displays `0x6a` and `0x6b` marker names.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the new marker strings in release verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - documents the `0x60..0x6b` kernel-init marker range.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt106*.sh` and latest
+  runner scripts
+  - retarget flashing to the exact attempt106 image.
+
+Expected next marker:
+
+- Latest `0x6a` means `frgmark(0x62)` returned and execution reached the
+  pre-SMP call boundary.
+- Latest `0x6b` means the inlined `do_pre_smp_initcalls()` loop started but no
+  indexed pre-SMP marker was written.
+- Latest `0xa0..0xcf` identifies the running or hung pre-SMP initcall by index.
+- Latest `0x62` after attempt106 means the blocker is still inside
+  `frgmark(0x62)` or the instruction path immediately after it, not the early
+  BCB worker kick.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt106-20260530-defer-bcb-pre-smp-markers boot-defer-bcb-pre-smp-markers-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt106-20260530-defer-bcb-pre-smp-markers && sha256sum -c SHA256SUMS)`
+- Flash from recovery:
+  `ADB_PORT=15038 ADB_PORTS=15038 /srv/forge/android/nx549j/scripts/nx549j-run-attempt106.sh`
+
+Rollback condition:
+
+- Revert attempt106 diagnostic isolation after the next capture proves whether
+  early BCB kick was the blocker. If the marker advances past `0x62`, keep the
+  BCB deferral direction and then debug the new latest marker.

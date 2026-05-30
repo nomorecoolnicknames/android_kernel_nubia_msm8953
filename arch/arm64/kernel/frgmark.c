@@ -258,6 +258,10 @@ static const char *frgmark_stage_name(u8 stage)
 		return "kernel_init_basic_setup_begin";
 	case FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE:
 		return "kernel_init_basic_setup_done";
+	case FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_CALL_BEGIN:
+		return "kernel_init_pre_smp_call_begin";
+	case FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_LOOP_BEGIN:
+		return "kernel_init_pre_smp_loop_begin";
 	case FRGMARK_STAGE_MSM_DRM_REGISTER_BEGIN:
 		return "msm_drm_register_begin";
 	case FRGMARK_STAGE_MSM_DRM_REGISTER_DONE:
@@ -454,7 +458,7 @@ static void frgmark_write_ramoops_record(void __iomem *ramoops, u8 stage)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((stage - FRGMARK_STAGE_HEAD_ENTRY) << 2);
 	else if (stage >= FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE &&
-		 stage <= FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE)
+		 stage <= FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_LOOP_BEGIN)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((0x20 + stage -
 			 FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE) << 2);
@@ -850,10 +854,13 @@ void frgmark_recovery_bcb_kick(const char *reason)
 	    frg_recovery_timeout_done || frg_recovery_bcb_written)
 		return;
 
-	if (!frg_recovery_bcb_work_armed)
-		return;
+	if (!frg_recovery_bcb_work_armed) {
+		schedule_delayed_work(&frg_recovery_bcb_work, 0);
+		frg_recovery_bcb_work_armed = true;
+	} else {
+		mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
+	}
 
-	mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
 	pr_emerg("FRGmark: BCB retry kicked reason=%s artifact=%s\n",
 		 reason ? reason : "unknown", FRG_RECOVERY_TIMEOUT_ARTIFACT);
 }
@@ -928,14 +935,11 @@ static void frgmark_maybe_checkpoint_bcb(u8 stage)
 	    frg_recovery_timeout_done || frg_recovery_bcb_written)
 		return;
 
-	if (stage < FRGMARK_STAGE_INITCALL_EARLY_DONE ||
+	if (stage < FRGMARK_STAGE_INITCALL_DEVICE_DONE ||
 	    stage > FRGMARK_STAGE_INITCALL_LATE_DONE)
 		return;
 
-	if (!frg_recovery_bcb_work_armed)
-		return;
-
-	mod_delayed_work(system_wq, &frg_recovery_bcb_work, 0);
+	frgmark_recovery_bcb_kick("late-initcall-checkpoint");
 	if (!frg_recovery_bcb_checkpoint_requested) {
 		frg_recovery_bcb_checkpoint_requested = true;
 		pr_emerg("FRGmark: BCB checkpoint write queued stage=%02x name=%s artifact=%s\n",
@@ -968,8 +972,6 @@ void __init frgmark_recovery_timeout_arm(void)
 	}
 	schedule_delayed_work(&frg_recovery_selector_work,
 			      FRG_RECOVERY_SELECTOR_REFRESH_SEC * HZ);
-	schedule_delayed_work(&frg_recovery_bcb_work, HZ);
-	frg_recovery_bcb_work_armed = true;
 	schedule_delayed_work(&frg_recovery_timeout_work,
 			      frg_recovery_timeout_sec * HZ);
 	frg_recovery_timeout_work_armed = true;

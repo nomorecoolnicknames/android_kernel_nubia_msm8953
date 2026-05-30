@@ -907,6 +907,7 @@ static void __init do_pre_smp_initcalls(void)
 	initcall_t *fn;
 	unsigned int idx = 0;
 
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_LOOP_BEGIN);
 	for (fn = __initcall_start; fn < __initcall0_start; fn++) {
 		if (idx <= FRGMARK_STAGE_PRE_SMP_INITCALL_LAST -
 			   FRGMARK_STAGE_PRE_SMP_INITCALL_BASE)
@@ -1061,9 +1062,9 @@ static noinline void __init kernel_init_freeable(void)
 
 	workqueue_init();
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_WORKQUEUE_DONE);
-	frgmark_recovery_bcb_kick("kernel-init-workqueue-ready");
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_BCB_KICK_DONE);
 
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_CALL_BEGIN);
 	do_pre_smp_initcalls();
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_PRE_SMP_INITCALLS_DONE);
 	lockup_detector_init();
@@ -1080,6 +1081,7 @@ static noinline void __init kernel_init_freeable(void)
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_BEGIN);
 	do_basic_setup();
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_DONE);
+	frgmark_recovery_bcb_kick("kernel-init-basic-setup-done");
 	frgmark(FRGMARK_STAGE_KERNEL_FREEABLE_DONE);
 
 	/* Open the /dev/console on the rootfs, this should never fail */
