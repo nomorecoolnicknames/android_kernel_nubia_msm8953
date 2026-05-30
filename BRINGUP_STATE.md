@@ -4592,3 +4592,37 @@ Rollback condition:
 - Revert the watcher if it can start the flash runner without
   `TARGET_RECOVERY_READY`, scans an unintended serial, or hides the runner exit
   code. Current smoke covered the no-listener path.
+
+2026-05-30 attempt98 blocked on missing reverse ADB listener:
+
+- Patch category: DIAGNOSTIC evidence.
+- Runtime status: no flash occurred.
+
+Evidence:
+
+- FACT: preflight command `ADB_PORT=15038
+  scripts/nx549j-check-reverse-adb.sh
+  /srv/forge/work/nx549j-preserve/release-attempt98-20260530-setup-tail-markers/runtime/reverse-adb-check-20260530-014628`
+  reported `NO_REVERSE_LISTENER`.
+- FACT: local `adb devices -l` on this host listed serials
+  `86641c36687700000000` and `91HEBNL163XD`, but not NX549J serial
+  `30785d1a`.
+- FACT: watcher command `WAIT_TUNNEL_SECONDS=60 POLL_SECONDS=5
+  ADB_PORTS='15038 15037'
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh` timed out at
+  `watch-timeout timeout=60s`.
+- FACT: every watcher preflight row for both `15038` and `15037` reported
+  `NO_REVERSE_LISTENER`.
+
+Expected next action:
+
+- Restore the Windows reverse ADB tunnel for the phone-side ADB server, then
+  rerun `ADB_PORTS="15038 15037"
+  /srv/forge/android/nx549j/scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+  The current attempt98 artifact and latest runner are already verified and
+  ready.
+
+Rollback condition:
+
+- None; this is no-write evidence of the current external connectivity
+  blocker.
