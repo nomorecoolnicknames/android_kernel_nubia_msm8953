@@ -982,9 +982,10 @@ static int __ref kernel_init(void *unused)
 
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_BEGIN);
 	kernel_init_freeable();
-	frgmark(FRGMARK_STAGE_KERNEL_INIT_FREEABLE_DONE);
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
+	frgmark_prepare_post_init();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_FREEABLE_DONE);
 	free_initmem();
 	mark_readonly();
 	system_state = SYSTEM_RUNNING;

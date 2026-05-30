@@ -100,6 +100,7 @@ static bool frg_recovery_bcb_cleared;
 static bool frg_recovery_bcb_disabled;
 static bool frg_panic_reboot_enabled;
 static bool frg_recovery_no_bcb_kmsg_dumped;
+static bool frg_initmem_unavailable;
 static u8 frg_last_stage;
 static unsigned int frg_bcb_misc_major = FRG_BCB_MISC_MAJOR;
 static unsigned int frg_bcb_misc_minor = FRG_BCB_MISC_MINOR;
@@ -1118,10 +1119,23 @@ void __init frgmark_init_iomap(void)
 	frgmark_arm_early_recovery_guard("early-imem");
 }
 
+void __init frgmark_prepare_post_init(void)
+{
+	frgmark_init_iomap();
+	frg_initmem_unavailable = true;
+}
+
 void frgmark(u8 stage)
 {
 	frg_last_stage = stage;
 	if (!frg_imem) {
+		if (frg_initmem_unavailable) {
+			pr_emerg("FRGmark stage=%02x name=%s skipped; no iomap after initmem\n",
+				 stage, frgmark_stage_name(stage));
+			frgmark_maybe_force_reset(stage);
+			frgmark_maybe_force_panic(stage);
+			return;
+		}
 		frgmark_early(stage);
 		frgmark_maybe_force_reset(stage);
 		frgmark_maybe_force_panic(stage);

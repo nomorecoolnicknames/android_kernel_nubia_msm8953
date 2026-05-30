@@ -5234,3 +5234,93 @@ Rollback condition:
 - Revert attempt106 diagnostic isolation after the next capture proves whether
   early BCB kick was the blocker. If the marker advances past `0x62`, keep the
   BCB deferral direction and then debug the new latest marker.
+
+Runtime result:
+
+- FACT: attempt106 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt106-20260530-defer-bcb-pre-smp-markers/runtime/flash-boot-bcb-20260530-152216`.
+- FACT: attempt106 boot partition prefix SHA-256 matched the local boot image:
+  `f664f9913a872867b22fec0d38a0e659e201cc3699e5f2b5844d53a58259054b`.
+- FACT: no host-prewritten BCB was used.
+- FACT: the device returned to recovery inside the wait window, and the runner
+  restored `misc` to backup SHA
+  `30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58`.
+- FACT: attempt106 pstore captured real target-kernel logs, not just raw
+  marker slots.
+- FACT: attempt106 advanced through `0x6a`, `0x6b`, every pre-SMP initcall
+  marker `0xa0..0xcf`, `0x63`, `0x64`, `0x65`, `0x66`, `0x67`, `0x68`,
+  `0x09`, `0x0a`, `0x0d`, initcall levels `0x50..0x57`, `0x0e`, `0x69`,
+  `0x0f`, and `0x0c`.
+- FACT: attempt106 wrote the BCB recovery command after
+  `kernel-init-basic-setup-done`, then panic recovery returned to recovery.
+- FACT: attempt106 panic:
+  `Unable to handle kernel paging request at virtual address ffffff8009a08d40`;
+  `PC is at frgmark_early+0x0/0xec`, `LR is at frgmark+0x10c/0x188`,
+  after `Freeing unused kernel memory: 6144K`.
+- INFERENCE: attempt106 fixed the early `0x62` stall by deferring the early BCB
+  worker. The remaining crash is caused by diagnostic code calling the
+  `__init` `frgmark_early()` fallback after `free_initmem()`, because normal
+  FRGmark iomap was still not prepared.
+
+2026-05-30 attempt107 FRGmark post-init iomap:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for diagnostic code.
+- Runtime status: built and verified. Flash/capture is next.
+
+Hypothesis:
+
+- HYPOTHESIS: the next boot should no longer panic at `frgmark_early+0x0`
+  after `free_initmem()`. If userspace still fails, the next pstore should
+  show either `0x10 exec_ramdisk_init`, a userspace ACK marker, or a real
+  post-init failure unrelated to the freed `__init` diagnostic path.
+
+Evidence:
+
+- FACT: attempt107 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt107-20260530-frgmark-post-init-iomap`.
+- FACT: attempt107 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt107-20260530-frgmark-post-init-iomap/boot-frgmark-post-init-iomap-120s.img`.
+- FACT: attempt107 boot SHA-256:
+  `454366ed83b56fadfb4c7079b9c8b79f38750d434e071eb0b08fe088b27876e8`.
+- FACT: attempt107 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - declares `frgmark_prepare_post_init()`.
+- `arch/arm64/kernel/frgmark.c`
+  - adds `frgmark_prepare_post_init()`, prepares normal iomaps before initmem
+    is freed, and refuses to call `frgmark_early()` if initmem is unavailable.
+- `init/main.c`
+  - calls `frgmark_prepare_post_init()` after async init synchronization and
+    before `free_initmem()`, then marks `0x0c`.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes `FRGmark early stage=..` pstore lines and no longer uses command
+    substitution on binary pstore input.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires `frgmark_prepare_post_init` in release `System.map`.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt107*.sh` and latest
+  runner scripts
+  - retarget flashing to the exact attempt107 image.
+
+Expected next marker:
+
+- `0x10 exec_ramdisk_init` means we passed `free_initmem()` and started init
+  execution.
+- `0x15 userspace_reached` or `0x17 userspace_ack` means the kernel reached
+  Android init far enough for the ramdisk ACK path.
+- Another panic with PC outside `frgmark_early` is now the next real blocker.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt107-20260530-frgmark-post-init-iomap boot-frgmark-post-init-iomap-120s.img`
+- Flash from recovery:
+  `ADB_PORT=15038 ADB_PORTS=15038 /srv/forge/android/nx549j/scripts/nx549j-run-attempt107.sh`
+
+Rollback condition:
+
+- Keep this guard unless a later run proves normal FRGmark iomap itself causes
+  a new earlier boot regression. The freed-`__init` fallback is a confirmed
+  diagnostic bug.

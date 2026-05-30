@@ -114,6 +114,7 @@
 void __init frgmark_init_iomap(void);
 void __init frgmark_early(u8 stage);
 void __init frgmark_linear_ramoops(u8 stage);
+void __init frgmark_prepare_post_init(void);
 void __init frgmark_recovery_timeout_arm(void);
 void frgmark_recovery_bcb_kick(const char *reason);
 void frgmark_userspace_reached(void);
@@ -122,6 +123,7 @@ void frgmark(u8 stage);
 static inline void frgmark_init_iomap(void) {}
 static inline void frgmark_early(u8 stage) {}
 static inline void frgmark_linear_ramoops(u8 stage) {}
+static inline void frgmark_prepare_post_init(void) {}
 static inline void frgmark_recovery_timeout_arm(void) {}
 static inline void frgmark_recovery_bcb_kick(const char *reason) {}
 static inline void frgmark_userspace_reached(void) {}
