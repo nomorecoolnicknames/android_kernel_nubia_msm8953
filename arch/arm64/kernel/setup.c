@@ -361,7 +361,6 @@ void __init setup_arch(char **cmdline_p)
 
 	init_random_pool();
 	frgmark_early(FRGMARK_STAGE_SETUP_RANDOM_POOL_DONE);
-	nx549j_splashprobe(NX549J_SPLASH_STAGE_SETUP_ARCH_DONE);
 }
 
 static int __init topology_init(void)

@@ -4863,3 +4863,75 @@ Rollback condition:
 - Revert attempt101/102 isolation once the next capture shows whether
   `setup_arch()` advances past `0x8f`, or if the early fallback creates a new
   marker regression before `0x8f`.
+
+2026-05-30 attempt103 late setup diagnostic hook isolation:
+
+- Patch category: ISOLATION.
+- Runtime status: built, verified, flashed to `30785d1a`, and timed out waiting
+  for automatic recovery or userspace. Post-timeout capture is pending until the
+  device is manually returned to recovery.
+
+Hypothesis:
+
+- HYPOTHESIS: attempt102 proved the setup tail advances through
+  `0x8c setup_random_pool_done`, so the next possible local blockers are the
+  late diagnostic `nx549j_splashprobe()` at the end of `setup_arch()` and the
+  immediate post-`setup_arch()` `frgmark_init_iomap()` call in `start_kernel()`.
+  attempt103 removes those diagnostic hooks so the next recovery-readable marker
+  should be `0x02 setup_arch_done` if `setup_arch()` returns normally.
+
+Evidence:
+
+- FACT: attempt103 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap`.
+- FACT: attempt103 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/boot-skip-late-splash-frgmark-iomap-120s.img`.
+- FACT: attempt103 boot SHA-256:
+  `dcf45cb65a47f7954975fa22de6be8a1fcdd97834eb28e601e76788274f25fa9`.
+- FACT: attempt103 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: attempt103 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/runtime/flash-boot-bcb-20260530-135630`.
+- FACT: attempt103 boot partition prefix SHA-256 matched the local boot image:
+  `dcf45cb65a47f7954975fa22de6be8a1fcdd97834eb28e601e76788274f25fa9`.
+- FACT: attempt103 wait result was `automatic-recovery-timeout`; no recovery or
+  Android `device` ADB state appeared inside the 260-second window.
+
+Files changed:
+
+- `arch/arm64/kernel/setup.c`
+  - removes the late `NX549J_SPLASH_STAGE_SETUP_ARCH_DONE` splashprobe after
+    `init_random_pool()`.
+- `init/main.c`
+  - removes the immediate post-`setup_arch()` splashprobe and
+    `frgmark_init_iomap()` call, leaving the normal `frgmark(0x02)` marker as
+    the next test point.
+
+Why each file changed:
+
+- Both edits are scoped to diagnostic marker plumbing on the earliest proven
+  still-unpassed edge between the setup tail and the first normal
+  `start_kernel()` marker.
+
+Expected next marker:
+
+- If attempt103 reaches `0x02 setup_arch_done`, then late diagnostic hook
+  plumbing was the blocker and the next failure is after `setup_arch()`.
+- If attempt103 still stops at `0x8c`, then the blocker is in `setup_arch()`
+  return or an uninstrumented path immediately before the first normal
+  `frgmark()` after it.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap boot-skip-late-splash-frgmark-iomap-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- After manual recovery appears:
+  `ADB_HOST=127.0.0.1 ADB_PORT=15038 SERIAL=30785d1a /srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/runner-snapshot-20260530/nx549j-finish-flash-timeout.sh /srv/forge/work/nx549j-preserve/release-attempt103-20260530-skip-late-splash-frgmark-iomap/runtime/flash-boot-bcb-20260530-135630`
+
+Rollback condition:
+
+- Revert attempt103 if the capture shows no advancement past `0x8c`, or after
+  the next marker proves whether the late diagnostic hooks are safe to remove
+  from the active debug branch.

@@ -503,8 +503,6 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
-	nx549j_splashprobe(NX549J_SPLASH_STAGE_START_KERNEL_AFTER_SETUP_ARCH);
-	frgmark_init_iomap();
 	frgmark(FRGMARK_STAGE_SETUP_ARCH_DONE);
 	/*
 	 * Set up the the initial canary ASAP:
