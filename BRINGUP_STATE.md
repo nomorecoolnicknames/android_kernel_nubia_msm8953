@@ -4952,8 +4952,7 @@ Rollback condition:
 
 - Patch category: DIAGNOSTIC.
 - Runtime status: built, verified, flashed to `30785d1a`, and timed out waiting
-  for automatic recovery or userspace. Post-timeout capture is pending until the
-  device is manually returned to recovery.
+  for automatic recovery or userspace, then captured after manual recovery.
 
 Hypothesis:
 
@@ -4985,6 +4984,18 @@ Evidence:
 - FACT: attempt104 wait result was `automatic-recovery-timeout`; no recovery or
   Android `device` ADB state for `30785d1a` appeared inside the 260-second
   window.
+- FACT: attempt104 manual recovery capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt104-20260530-kernel-init-freeable-markers/runtime/flash-boot-bcb-20260530-144044/after-manual-recovery`.
+- FACT: attempt104 summary reports boot identity `PASS`, recovery result
+  `MANUAL_RECOVERY`, target marker evidence `PRESENT`, latest decoded marker
+  `0x62 kernel_init_bcb_kick_done`, preboot pstore clear `PASS`, and misc
+  restore `PASS`.
+- FACT: attempt104 raw marker latest slot at `marker-od.txt` offset `0x40`
+  contains `46524762`, decoded as `0x62 kernel_init_bcb_kick_done`.
+- INFERENCE: attempt104 passed `smp_prepare_cpus()`, `workqueue_init()`, and
+  `frgmark_recovery_bcb_kick()`, then stopped before
+  `0x63 kernel_init_pre_smp_initcalls_done`, so the next blocker is inside
+  `do_pre_smp_initcalls()`.
 
 Files changed:
 
@@ -5043,3 +5054,84 @@ Rollback condition:
 - Revert attempt104 diagnostic markers after the next capture narrows the
   `kernel_init_freeable()` blocker, or if marker insertion changes the last
   stage before `0x0b`.
+
+2026-05-30 attempt105 pre-SMP initcall index markers:
+
+- Patch category: DIAGNOSTIC.
+- Runtime status: built and verified. Flash/capture is pending.
+
+Hypothesis:
+
+- HYPOTHESIS: attempt104 proves `do_pre_smp_initcalls()` is the next active
+  hang region. There are 48 early initcall entries between `__initcall_start`
+  and `__initcall0_start`; attempt105 writes marker `0xa0 + index` before each
+  entry so the next capture identifies the running/hung initcall by index.
+
+Evidence:
+
+- FACT: attempt104 latest raw marker is `0x62 kernel_init_bcb_kick_done`.
+- FACT: attempt104 has no `0x63 kernel_init_pre_smp_initcalls_done`, no
+  `smp_init` marker, and no later initcall/userspace markers.
+- FACT: attempt104 `System.map` places `__initcall_start` at
+  `ffffff8009a93dd8` and `__initcall0_start` at `ffffff8009a93f58`, a 48-entry
+  span when interpreted as 8-byte function pointers.
+- FACT: attempt105 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers`.
+- FACT: attempt105 boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers/boot-pre-smp-initcall-index-markers-120s.img`.
+- FACT: attempt105 boot SHA-256:
+  `b433c0d1ef0b15a3851d027ced55b4f4fc8b0bb2ab55c5d96919bfd390ec7b5b`.
+- FACT: attempt105 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  required symbols, required marker strings, ramdisk userspace ACK, no-BCB
+  no-loop gate, pstore config, serial early console config, and ramoops DTB.
+
+Files changed:
+
+- `include/linux/frgmark.h`
+  - adds `0xa0..0xcf` as pre-SMP initcall index markers.
+- `arch/arm64/kernel/frgmark.c`
+  - names `0xa0..0xcf` as `pre_smp_initcall` and reserves separate ramoops
+    table slots for them.
+- `init/main.c`
+  - writes `0xa0 + index` before each `do_pre_smp_initcalls()` entry.
+- `/home/n8n/build-station/scripts/nx549j-frgmark-decode-spm.sh`
+  - decodes `0xa0..0xcf` as `pre_smp_initcall_00..47`.
+- `/home/n8n/build-station/apps/web/src/app/debug/page.tsx`
+  - displays the new pre-SMP initcall index names.
+- `/srv/forge/android/nx549j/scripts/nx549j-summarize-flash-run.sh`
+  - prefers the latest raw `marker-od.txt` slot and classifies
+    `pre_smp_initcall_*` as earlier-stage target markers.
+- `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+  - requires the new marker string in release verification.
+- `/srv/forge/android/nx549j/scripts/nx549j-run-attempt105*.sh` and latest
+  runner scripts
+  - retarget flashing to the exact attempt105 image.
+
+Why each file changed:
+
+- The kernel edits are diagnostic-only markers for the exact next proven
+  blocker region. No early initcall is skipped or changed.
+- Decoder/UI/verification changes keep the marker table synchronized with the
+  kernel marker header.
+- The summarizer change fixes the observed stale-grep problem where older table
+  entries could hide the actual latest marker slot.
+
+Expected next marker:
+
+- Latest `0xa0..0xcf` identifies the running or hung pre-SMP initcall by index.
+- `0x63` means all pre-SMP initcalls returned and the next blocker is after
+  `do_pre_smp_initcalls()`.
+
+Verification commands:
+
+- `scripts/nx549j-verify-release-artifact.sh /srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers boot-pre-smp-initcall-index-markers-120s.img`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers && sha256sum -c SHA256SUMS)`
+- `(cd /srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers/runner-snapshot-20260530 && sha256sum -c SHA256SUMS)`
+- Flash from recovery:
+  `ADB_PORT=15038 ADB_PORTS=15038 /srv/forge/work/nx549j-preserve/release-attempt105-20260530-pre-smp-initcall-index-markers/runner-snapshot-20260530/nx549j-run-attempt105.sh`
+
+Rollback condition:
+
+- Revert attempt105 diagnostic markers after the next capture identifies the
+  pre-SMP initcall index, or if marker insertion changes the last stage before
+  `0x62`.

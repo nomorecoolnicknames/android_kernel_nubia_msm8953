@@ -291,6 +291,9 @@ static const char *frgmark_stage_name(u8 stage)
 	case FRGMARK_STAGE_DSI_REGISTER_FAILED:
 		return "dsi_register_failed";
 	default:
+		if (stage >= FRGMARK_STAGE_PRE_SMP_INITCALL_BASE &&
+		    stage <= FRGMARK_STAGE_PRE_SMP_INITCALL_LAST)
+			return "pre_smp_initcall";
 		if (stage >= FRGMARK_STAGE_HEARTBEAT_BASE &&
 		    stage <= FRGMARK_STAGE_HEARTBEAT_LAST)
 			return "heartbeat";
@@ -455,6 +458,11 @@ static void frgmark_write_ramoops_record(void __iomem *ramoops, u8 stage)
 		slot = FRG_RAMOOPS_SLOT_BASE +
 		       ((0x20 + stage -
 			 FRGMARK_STAGE_KERNEL_INIT_SMP_PREPARE_DONE) << 2);
+	else if (stage >= FRGMARK_STAGE_PRE_SMP_INITCALL_BASE &&
+		 stage <= FRGMARK_STAGE_PRE_SMP_INITCALL_LAST)
+		slot = FRG_RAMOOPS_SLOT_BASE +
+		       ((0x30 + stage -
+			 FRGMARK_STAGE_PRE_SMP_INITCALL_BASE) << 2);
 	else
 		slot = FRG_RAMOOPS_SLOT_BASE + ((stage & 0x1f) << 2);
 

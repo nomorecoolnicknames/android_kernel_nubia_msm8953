@@ -905,9 +905,15 @@ static void __init do_basic_setup(void)
 static void __init do_pre_smp_initcalls(void)
 {
 	initcall_t *fn;
+	unsigned int idx = 0;
 
-	for (fn = __initcall_start; fn < __initcall0_start; fn++)
+	for (fn = __initcall_start; fn < __initcall0_start; fn++) {
+		if (idx <= FRGMARK_STAGE_PRE_SMP_INITCALL_LAST -
+			   FRGMARK_STAGE_PRE_SMP_INITCALL_BASE)
+			frgmark(FRGMARK_STAGE_PRE_SMP_INITCALL_BASE + idx);
 		do_one_initcall(*fn);
+		idx++;
+	}
 }
 
 /*
