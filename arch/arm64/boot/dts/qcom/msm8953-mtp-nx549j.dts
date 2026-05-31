@@ -140,12 +140,11 @@
 		synaptics,reset-delay-ms = <20>;
 		synaptics,lcd-reset-gpio = <&tlmm 61 0x0>;
 		synaptics,cap-button-codes = <158 139 172>;
-		pinctrl-names = "pmx_ts_int_active", "pmx_ts_int_suspend",
-				"pmx_ts_reset_active", "pmx_ts_reset_suspend";
-		pinctrl-0 = <&synaptics_int_active>;
-		pinctrl-1 = <&synaptics_int_suspend>;
-		pinctrl-2 = <&synaptics_reset_active>;
-		pinctrl-3 = <&synaptics_reset_suspend>;
+		pinctrl-names = "synaptics_pin_active", "synaptics_pin_suspend";
+		pinctrl-0 = <&synaptics_int_active &synaptics_reset_active
+				&synaptics_power_active>;
+		pinctrl-1 = <&synaptics_int_suspend &synaptics_reset_suspend
+				&synaptics_power_suspend>;
 	};
 };
 
