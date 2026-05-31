@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-05-31T03:27:50Z
+Last updated: 2026-05-31T07:50:00Z
 
 ## Objective
 
@@ -5998,3 +5998,84 @@ Runtime result:
   display blocker is likely panel command/init parity or Nubia-specific panel
   extension behavior, not APPS SMMU, generic MDP scanout, or regulator
   enablement.
+
+2026-05-31 attempt118 touch pinctrl and userspace component batch:
+
+- Patch category: PROPER-FIX for Synaptics pinctrl naming; PROPER-FIX /
+  packaging repair for userspace radio/qrtr/sensor sidecars that were missing
+  or zero-byte in the active runtime.
+- Kernel GitHub branch:
+  `https://github.com/nomorecoolnicknames/android_kernel_nubia_msm8953/tree/nx549j-port-4.9`.
+- Kernel checkpoint:
+  `ce2332fcc nx549j: fix synaptics pinctrl states`.
+- Attempt118 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt118-20260531-touch-pinctrl`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt118-20260531-touch-pinctrl/boot-touch-pinctrl-120s.img`.
+- Boot SHA-256:
+  `63e35205c64fff9b50aee7c097b400cff5b56a52576d81fdcd49ef3c7fa9ce52`.
+- FACT: attempt118 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  symbols, marker strings, ramdisk diagnostics, no-BCB gate, pstore config,
+  serial console config, ramoops DTB, and DSI supply parity.
+- FACT: packaged DTB contains `synaptics_dsx@20` with
+  `pinctrl-names = "synaptics_pin_active", "synaptics_pin_suspend"` and each
+  state now includes the IRQ, reset, and power pinctrl groups expected by the
+  active 4.9 Synaptics DSX driver.
+- Evidence for userspace component repair:
+  `/srv/forge/work/nx549j-preserve/release-attempt117-20260531-dsi-l22-voltage-table/runtime/userspace-components-20260531-live`.
+- FACT: attempt117 userspace reached boot complete and display scanout was
+  healthy, so non-display component failures are now actionable.
+- FACT: runtime `/vendor/firmware_mnt` was mounted from the modem partition
+  but lacked `image/wcnss.mdt`; WCNSS Wi-Fi/BT firmware loading failed before
+  normal WLAN/BT bring-up.
+- FACT: runtime lacked real `qcrild`, `qrtr-ns`, `port-bridge`, and
+  `sensors.qti` binaries; the source vendor package also lacked those blobs
+  before this batch.
+- FACT: TheMuppets Xiaomi lineage-18.1 blob sources provided SHA1-matching
+  RIL blobs already named in `device/nubia/nx549j/proprietary-files.txt`:
+  `qcrild` `c0db5589a45874c31c0bb7e8a7151511505c1e04`,
+  `qcrild.rc` `f9c32f5e7a8e7f4a0df1dcce174de169b8d7c060`,
+  `libqcrilFramework.so` `3d8f25d13533f6fa45a36b23feb250291b663370`,
+  `libril-qc-hal-qmi.so` `bf1a176d3890eaba94a115a311f98efe1010aeed`,
+  and `qcrild_librilutils.so` `c23470619690a34f7442fb6b26345de5dc4de880`.
+- Source/package changes outside the kernel git repo:
+  - `vendor/nubia/msm8953-common/proprietary/vendor/bin/qrtr-ns`
+  - `vendor/nubia/msm8953-common/proprietary/vendor/bin/port-bridge`
+  - `vendor/nubia/msm8953-common/proprietary/vendor/bin/sensors.qti`
+  - `vendor/nubia/msm8953-common/proprietary/vendor/etc/init/port-bridge.rc`
+  - `vendor/nubia/nx549j/proprietary/vendor/bin/hw/qcrild`
+  - `vendor/nubia/nx549j/proprietary/vendor/etc/init/qcrild.rc`
+  - `vendor/nubia/nx549j/proprietary/vendor/lib64/libqcrilFramework.so`
+  - `vendor/nubia/nx549j/proprietary/vendor/lib64/libril-qc-hal-qmi.so`
+  - `vendor/nubia/nx549j/proprietary/vendor/lib64/qcrild_librilutils.so`
+  - `vendor/nubia/msm8953-common/msm8953-common-vendor.mk`
+  - `vendor/nubia/nx549j/nx549j-vendor.mk`
+  - `device/nubia/msm8953-common/rootdir/etc/init.qcom.rc`
+- FACT: `device/nubia/msm8953-common/rootdir/etc/init.qcom.rc` no longer
+  starts the stale `vendor.ril-daemon2 /vendor/bin/hw/rild -c 2`; the copied
+  `qcrild.rc` supplies `vendor.qcrild`, `vendor.qcrild2`, and disabled
+  `vendor.qcrild3`.
+- FACT: `TARGET_COPY_OUT_VENDOR=system/vendor`; this tree has no separate
+  `vendor.img`, so these component fixes require a fresh `system.img` or full
+  ROM package, not only a boot flash.
+- FACT: during the 2026-05-31 `mka systemimage -j1` run, build output copied
+  non-zero `qcrild`, `qrtr-ns`, `port-bridge`, `sensors.qti`,
+  `qcrild.rc`, `libqcrilFramework.so`, `libril-qc-hal-qmi.so`, and
+  `qcrild_librilutils.so` into `out/target/product/nx549j/system/vendor`.
+- Expected next marker:
+  - After flashing attempt118 boot plus the matching freshly built system
+    image/full package, touch input should create a Synaptics input device or
+    move to a concrete I2C/firmware/power error.
+  - Radio should no longer fail at missing `qcrild` / missing
+    `android.hardware.radio@1.4::IRadio/slot1` service startup due absent
+    daemon binaries.
+  - QRTR, port bridge, and sensors should no longer be zero-byte exec failures.
+  - Wi-Fi/BT will still need a valid stock NX549J modem/NON-HLOS firmware
+    mount containing `/vendor/firmware_mnt/image/wcnss.mdt`; do not fake this
+    by copying `wcnss.mdt` into the normal vendor filesystem.
+- Rollback condition:
+  - Revert the Synaptics DTS pinctrl change if the touch controller regresses
+    from probe-visible to absent for reasons unrelated to pinctrl lookup.
+  - Revert the RIL/blob wiring only if fresh boot logs show these Q RIL blobs
+    are ABI-incompatible with the active userspace; do not restore the old
+    zero-byte or missing executables.
