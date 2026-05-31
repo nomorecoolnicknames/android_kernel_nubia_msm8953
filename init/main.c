@@ -984,7 +984,6 @@ static int __ref kernel_init(void *unused)
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
-	frgmark_prepare_post_init();
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_FREEABLE_DONE);
 	free_initmem();
 	mark_readonly();
@@ -1078,6 +1077,7 @@ static noinline void __init kernel_init_freeable(void)
 
 	page_alloc_init_late();
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_PAGE_ALLOC_LATE_DONE);
+	frgmark_prepare_post_init();
 
 	frgmark(FRGMARK_STAGE_KERNEL_INIT_BASIC_SETUP_BEGIN);
 	do_basic_setup();
@@ -1086,8 +1086,10 @@ static noinline void __init kernel_init_freeable(void)
 	frgmark(FRGMARK_STAGE_KERNEL_FREEABLE_DONE);
 
 	/* Open the /dev/console on the rootfs, this should never fail */
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_BEGIN);
 	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
 		pr_err("Warning: unable to open an initial console.\n");
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_DONE);
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
@@ -1098,10 +1100,13 @@ static noinline void __init kernel_init_freeable(void)
 
 	if (!ramdisk_execute_command)
 		ramdisk_execute_command = "/init";
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_RAMDISK_CMD_READY);
 
 	if (sys_access((const char __user *) ramdisk_execute_command, 0) != 0) {
 		ramdisk_execute_command = NULL;
+		frgmark(FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_BEGIN);
 		prepare_namespace();
+		frgmark(FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_DONE);
 	}
 
 	/*
@@ -1115,4 +1120,5 @@ static noinline void __init kernel_init_freeable(void)
 
 	integrity_load_keys();
 	load_default_modules();
+	frgmark(FRGMARK_STAGE_KERNEL_INIT_DEFAULT_MODULES_DONE);
 }

@@ -431,9 +431,9 @@ static void mdss_mdp_cmd_wait4_autorefresh_pp(struct mdss_mdp_ctl *ctl)
 				pr_err("timedout waiting for ctl%d autorefresh pp done\n",
 					ctl->num);
 				MDSS_XLOG(0xbad3);
+				pr_warn_once("NX549J: MDSS xlog suppressed panic for command autorefresh pp timeout\n");
 				MDSS_XLOG_TOUT_HANDLER("mdp",
-					"vbif", "dbg_bus", "vbif_dbg_bus",
-					"panic");
+					"vbif", "dbg_bus", "vbif_dbg_bus");
 			}
 		}
 	}
@@ -2187,10 +2187,11 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 			MDSS_XLOG(0xbad);
 		} else if (ctx->pp_timeout_report_cnt == MAX_RECOVERY_TRIALS) {
 			MDSS_XLOG(0xbad2);
+			pr_warn_once("NX549J: MDSS xlog suppressed panic for command pingpong timeout\n");
 			MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl", "dsi0_phy",
 				"dsi1_ctrl", "dsi1_phy", "vbif", "vbif_nrt",
 				"dbg_bus", "vbif_dbg_bus",
-				"dsi_dbg_bus", "panic");
+				"dsi_dbg_bus");
 			mdss_fb_report_panel_dead(ctl->mfd);
 		}
 
@@ -2719,9 +2720,10 @@ static void mdss_mdp_cmd_wait4_autorefresh_done(struct mdss_mdp_ctl *ctl)
 		pr_err("timedout waiting for ctl%d autorefresh done line_cnt:%d frames:%d\n",
 			ctl->num, val, ctx->autorefresh_frame_cnt);
 		MDSS_XLOG(0xbad4, val);
+		pr_warn_once("NX549J: MDSS xlog suppressed panic for command autorefresh done timeout\n");
 		MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl", "dsi0_phy",
 			"dsi1_ctrl", "dsi1_phy", "vbif", "vbif_nrt",
-			"dbg_bus", "vbif_dbg_bus", "panic");
+			"dbg_bus", "vbif_dbg_bus");
 	}
 
 	/* once autorefresh is done, wait for write pointer */
@@ -2737,9 +2739,10 @@ static void mdss_mdp_cmd_wait4_autorefresh_done(struct mdss_mdp_ctl *ctl)
 		pr_err("timed out waiting for line out ctl:%d val:0x%x\n",
 			ctl->num, val);
 		MDSS_XLOG(0xbad5, val);
+		pr_warn_once("NX549J: MDSS xlog suppressed panic for command line-out timeout\n");
 		MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl", "dsi0_phy",
 			"dsi1_ctrl", "dsi1_phy", "vbif", "vbif_nrt",
-			"dbg_bus", "vbif_dbg_bus", "panic");
+			"dbg_bus", "vbif_dbg_bus");
 	}
 
 	MDSS_XLOG(val, 0x333);
@@ -3848,4 +3851,3 @@ int mdss_mdp_cmd_start(struct mdss_mdp_ctl *ctl)
 
 	return 0;
 }
-

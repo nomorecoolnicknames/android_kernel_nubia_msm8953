@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-05-30
+Last updated: 2026-05-31T03:27:50Z
 
 ## Objective
 
@@ -5324,3 +5324,677 @@ Rollback condition:
 - Keep this guard unless a later run proves normal FRGmark iomap itself causes
   a new earlier boot regression. The freed-`__init` fallback is a confirmed
   diagnostic bug.
+
+2026-05-30 attempt108 BCB late-stage refresh:
+
+- Patch category: DIAGNOSTIC / USERSpace boundary proof.
+- Runtime status: flashed twice and returned to recovery automatically inside
+  the wait window.
+- Attempt108 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt108-20260530-bcb-late-stage-refresh`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt108-20260530-bcb-late-stage-refresh/boot-bcb-late-stage-refresh-120s.img`.
+- SHA-256:
+  `2e97602d9832f8656fa01466a47fefd6e9075fe21a0a48b14432c2918187b0f2`.
+- FACT: post-format flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt108-20260530-bcb-late-stage-refresh/runtime/flash-boot-bcb-20260530-155100`.
+- FACT: boot partition prefix SHA-256 matched the local attempt108 boot image.
+- FACT: recovery summary reports boot identity `PASS`, recovery result
+  `CANDIDATE_AUTO`, target marker evidence `PRESENT`, BCB stage stamp
+  `PRESENT`, pstore file count `0`, preboot pstore clear `PASS`, and misc
+  restore `PASS`.
+- FACT: BCB stage stamp recorded reason `userspace-reached`, last stage
+  `0x15 userspace_reached`, jiffies `4294879300`.
+- FACT: `/cache` is mountable in recovery as ext4 on `/dev/block/mmcblk0p25`.
+- FACT: after the user formatted `/data`, recovery no longer found a crypto
+  footer, but attempt108 still did not reach Android ADB.
+- INFERENCE: the 4.9 kernel now reaches `execve("/init")`; the remaining
+  blocker is first-stage init / first-stage mount / early userspace before the
+  existing `/proc/frgmark_userspace_ack` write.
+
+2026-05-30 attempt109 force ADB and cache trace:
+
+- Patch category: DIAGNOSTIC / BOOT-ONLY USERSpace observability.
+- Runtime status: built and verified. Flash/capture is next.
+- Attempt109 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt109-20260530-force-adb-cache-trace`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt109-20260530-force-adb-cache-trace/boot-force-adb-cache-trace-120s.img`.
+- SHA-256:
+  `2e17552fb2d562129a4129eefccd760e3e7b7887668ccfcbf42d9c57b517df26`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostic strings, no-BCB no-loop
+  gate, pstore config, serial early console config, and ramoops DTB.
+- FACT: ramdisk `init` strings include `ro.secure=0`, `ro.adb.secure=0`,
+  `persist.sys.usb.config=adb`, `NX549J forcing adb debug properties from
+  first-stage init`, `/cache/nx549j-bootdiag/first_stage.log`,
+  `before-do-first-stage-mount`, and `after-do-first-stage-mount`.
+- Source changes:
+  - `system/core/init/first_stage_init.cpp` writes
+    `/debug_ramdisk/adb_debug.prop`, sets `INIT_FORCE_DEBUGGABLE=true`, and
+    writes first-stage trace records to `/cache/nx549j-bootdiag/first_stage.log`
+    when `/dev/block/mmcblk0p25` can be mounted.
+  - `device/nubia/nx549j/prop.mk` forces `ro.secure=0`,
+    `ro.adb.secure=0`, and `persist.sys.usb.config=adb` for future full/system
+    builds.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    requires the new ramdisk diagnostic strings.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt109*.sh` and latest
+    runner scripts target the exact attempt109 image.
+- Expected runtime evidence:
+  - If Android ADB appears before the timeout, inspect userspace logs directly.
+  - If recovery returns, pull `/cache/nx549j-bootdiag/first_stage.log` from
+    recovery and compare the latest first-stage trace with the BCB
+    `userspace-reached` stamp.
+- Flash command:
+  `ADB_HOST=127.0.0.1 ADB_PORT=15038 ADB_PORTS=15038 SERIAL=30785d1a /srv/forge/android/nx549j/scripts/nx549j-run-attempt109.sh`.
+
+Runtime result:
+
+- FACT: attempt109 flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt109-20260530-force-adb-cache-trace/runtime/flash-boot-bcb-20260530-161055`.
+- FACT: boot partition prefix SHA-256 matched the local attempt109 boot image:
+  `2e17552fb2d562129a4129eefccd760e3e7b7887668ccfcbf42d9c57b517df26`.
+- FACT: result was `USERSPACE`; Android ADB appeared as normal `device`.
+- FACT: forced debug properties were live in Android userspace:
+  `ro.secure=0`, `ro.adb.secure=0`, `ro.debuggable=1`,
+  `ro.force.debuggable=1`, and `persist.sys.usb.config=adb`.
+- FACT: `adb shell id` returned root context `u:r:su:s0`.
+- FACT: `/cache/nx549j-bootdiag/first_stage.log` was present and contained
+  `first-stage-start`, `after-load-kernel-modules`,
+  `before-do-first-stage-mount`, and `after-do-first-stage-mount`.
+- FACT: dmesg shows second-stage init loaded `/debug_ramdisk/adb_debug.prop`.
+- FACT: Android services reached at least zygote, SurfaceFlinger, bootanim,
+  vold, netd, and root adbd. `sys.boot_completed` was still empty during the
+  short capture window, with several vendor HAL services restarting.
+- FACT: `frgmark_late_init` returned early before normal FRGmark iomap was
+  prepared, so `/proc/frgmark_userspace_ack` was missing.
+- FACT: BCB stayed sticky with `reason=userspace-reached`; the device later
+  returned to recovery from the old timeout path.
+- INFERENCE: attempt109 proves the kernel can boot Android userspace with ADB,
+  and proves the old "no secure 0 / no forced adb" hypothesis. It also exposes
+  a diagnostic bug: successful userspace handoff must disarm/clear BCB without
+  waiting for a proc ACK that does not exist yet.
+
+2026-05-30 attempt110 userspace auto-ack:
+
+- Patch category: DIAGNOSTIC / STABILITY after userspace hit.
+- Runtime status: built and verified. Flash/capture is next.
+- Attempt110 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt110-20260530-userspace-auto-ack`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt110-20260530-userspace-auto-ack/boot-userspace-auto-ack-120s.img`.
+- SHA-256:
+  `9e638a59b68a6082a5249df8c7e307911f1db8354140717eb4a63f4ade1871b3`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostic strings, no-BCB no-loop
+  gate, pstore config, serial early console config, and ramoops DTB.
+- Source changes:
+  - `arch/arm64/kernel/frgmark.c` now auto-calls
+    `frgmark_userspace_ack("userspace-reached")` when userspace exec succeeds.
+  - `init/main.c` now calls `frgmark_prepare_post_init()` before
+    `do_basic_setup()`, allowing `frgmark_late_init` to create the proc ACK
+    hook instead of returning early.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now requires the auto-ack/disarm and BCB-clear strings.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt110*.sh` and latest
+    runner scripts target the exact attempt110 image.
+- Expected runtime evidence:
+  - Android ADB should return as `device`, with the same forced debug props as
+    attempt109.
+  - Dmesg should show `userspace exec reached, auto-acking recovery timeout`,
+    `userspace ack reason=userspace-reached`, and `BCB command cleared`.
+  - Live `misc` first page should not contain `boot-recovery` after userspace
+    is reached.
+- Flash command:
+  `ADB_HOST=127.0.0.1 ADB_PORT=15038 ADB_PORTS=15038 SERIAL=30785d1a /srv/forge/android/nx549j/scripts/nx549j-run-attempt110.sh`.
+
+2026-05-30 attempt111 MDSS SMMU CB21 scanout diagnostic:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for physical display scanout.
+- Runtime status: built and verified. Flash/capture is next.
+- Attempt114 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt114-20260530-skip-wfd-lcd-backlight`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt114-20260530-skip-wfd-lcd-backlight/boot-skip-wfd-lcd-backlight-120s.img`.
+- Boot SHA-256:
+  `50af3d5c3636874a26cc20911450606fe3523f9bda940483cbbb16ba86bdda9a`.
+- Image.gz-dtb SHA-256:
+  `ffac929a2e4713bd502f355abe5dec4b432a662b9929707a9e35664dfa022122`.
+- vmlinux SHA-256:
+  `50100d492508a3302c8c77004e87aa1e42084e77dc28ce9eefc69e25066bd740`.
+- System.map SHA-256:
+  `bdc826f7f77af4f4e448b4658a5da5af8c8c5f029f4ee6ed49dc0ea2d8c32ac2`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostics, no-BCB gate, pstore
+  config, serial early console config, and ramoops DTB.
+- FACT: `unpack_bootimg.py` confirmed the boot header still uses the attempt113
+  legacy layout: header version 0, page size 2048, kernel load
+  `0x80008000`, ramdisk load `0x81000000`, tags `0x80000100`, OS version
+  `11.0.0`, and patch level `2024-02`.
+- FACT: `scripts/nx549j-run-attempt114.sh`,
+  `scripts/nx549j-run-attempt114-unattended.sh`, and latest runner aliases now
+  target the exact attempt114 boot SHA above.
+- Live evidence before this patch:
+  - FACT: Android userspace reached SetupWizard and `sys.boot_completed=1`.
+  - FACT: `screencap` after wake showed the Lineage SetupWizard UI, while the
+    physical panel still showed only the bootloader logo.
+  - FACT: `dmesg` repeatedly showed
+    `mdss_smmu_attach_v2: iommu attach device failed for domain[0] with err:-22`
+    and `mdss_mdp_overlay_kickoff: iommu attach failed rc=-22`.
+  - FACT: TrustZone SMMU programming warned
+    `Format change failed for CB 21 with ret -22`.
+  - FACT: `/d/mdp/stat` reported `intf2: play: 00000000`, so SurfaceFlinger
+    composition was alive but MDP never played frames to the panel.
+- Reference check:
+  - FACT: local msm8953 references under
+    `/srv/forge/work/nx549j-reference-audit-20260528/refs` do not show a
+    different `msm_tz_smmu.c` or MDSS SMMU DTS binding for this path.
+  - INFERENCE: this is likely a bootloader/TZ/static-context-bank mismatch on
+    NX549J rather than an obvious copied DTS typo.
+- Source change:
+  - `drivers/soc/qcom/msm_tz_smmu.c` now tolerates only
+    `TZ_DEVICE_APPS + CB21 + -EINVAL` from
+    `SMMU_CHANGE_PAGETABLE_FORMAT`, logs
+    `NX549J: ignoring TZ APPS CB21 format failure`, and returns success.
+  - Other TrustZone SMMU format failures still warn and remain fatal.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now requires the diagnostic marker string in `vmlinux`.
+- Expected runtime evidence:
+  - `dmesg` should contain the new `NX549J: ignoring TZ APPS CB21 format
+    failure` marker and should no longer contain MDSS SMMU attach `-22` for
+    the display path.
+  - `/d/mdp/stat` should show `play` advancing above `0` if this was the
+    blocking scanout failure.
+  - If `play` advances but the user still sees bootlogo, the next blocker is
+    likely panel command/DSI/fb-index handoff rather than SurfaceFlinger.
+- Rollback condition:
+  - Revert this diagnostic tolerance if it introduces SMMU faults, memory
+    corruption, earlier boot failure, or proves unrelated after `play` remains
+    `0` and the same MDSS attach errors persist.
+
+Runtime result:
+
+- FACT: attempt111 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt111-20260530-mdss-smmu-cb21-scanout`.
+- FACT: boot image SHA-256:
+  `59228916ce5d414ed696da8d33a785d176322070a6991660bde1fbe4707eb225`.
+- FACT: runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt111-20260530-mdss-smmu-cb21-scanout/runtime/flash-boot-bcb-20260530-203005`.
+- FACT: late recovery evidence directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt111-20260530-mdss-smmu-cb21-scanout/runtime/flash-boot-bcb-20260530-203005/after-late-recovery`.
+- FACT: recovery capture boot prefix SHA matched attempt111:
+  `59228916ce5d414ed696da8d33a785d176322070a6991660bde1fbe4707eb225`.
+- FACT: pstore confirmed userspace auto-ack and BCB clear:
+  `FRGmark stage=15 name=userspace_reached`,
+  `userspace exec reached, auto-acking recovery timeout`,
+  `FRGmark stage=17 name=userspace_ack`,
+  `BCB command cleared reason=userspace-ack`, and
+  `recovery timeout disarmed`.
+- FACT: the new CB21 diagnostic marker appeared:
+  `NX549J: ignoring TZ APPS CB21 format failure ret -22 for MDSS scanout diagnostic`.
+- FACT: after that, MDSS hit a later SMMU/scanout failure:
+  `mdss_smmu_fault_handler: mdss_smmu: iova:0x8807000 flags:0x25`,
+  `Unhandled context fault: iova=0x08807000 ... cb=21`,
+  `kernel BUG at drivers/iommu/arm-smmu.c:1552`, and
+  `Kernel panic - not syncing: mdss_mdp_wait_for_xin_halt`.
+- INFERENCE: the CB21 TZ tolerance advanced the display path past the previous
+  attach `-22` blocker. The next diagnostic blocker is that the first MDSS
+  scanout translation fault and follow-up XIN halt timeout force a panic before
+  live Android evidence can be collected.
+
+2026-05-30 attempt112 MDSS SMMU nonfatal + XIN no-panic diagnostic:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for live display evidence.
+- Runtime status: built and verified. Flash/capture is next.
+- Attempt112 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt112-20260530-mdss-smmu-nonfatal-xin-no-panic`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt112-20260530-mdss-smmu-nonfatal-xin-no-panic/boot-mdss-smmu-nonfatal-xin-no-panic-120s.img`.
+- Boot SHA-256:
+  `05f426d457f1731eb7f4dce64bea0aea23c69c2b73b16a8bb14d4dd59a82279c`.
+- Image.gz-dtb SHA-256:
+  `23ea8b9ce3d8e82760023fc88407d39aae63cfe4b7fb94a31af2a24210365c75`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostics, no-BCB gate, pstore
+  config, serial early console config, and ramoops DTB.
+- Source changes:
+  - `drivers/video/fbdev/msm/mdss_smmu.c` sets
+    `DOMAIN_ATTR_NON_FATAL_FAULTS` on MDSS SMMU mappings and logs
+    `NX549J: MDSS SMMU non-fatal faults enabled`.
+  - `drivers/video/fbdev/msm/mdss_mdp.c` keeps the VBIF/XIN timeout register
+    dump but removes the `panic` token from that one timeout handler and logs
+    `NX549J: MDSS xlog suppressed panic for VBIF XIN halt timeout`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now requires both new MDSS marker strings.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt112*.sh` and latest
+    runner scripts target the exact attempt112 image.
+- Expected next marker:
+  - No `Kernel panic - not syncing: mdss_mdp_wait_for_xin_halt`.
+  - Dmesg should contain `NX549J: MDSS SMMU non-fatal faults enabled` and, if
+    the XIN timeout repeats, `NX549J: MDSS xlog suppressed panic`.
+  - If Android survives, collect `/d/mdp/stat`, `/d/mdp/xlog/dump`, dmesg,
+    logcat, framebuffer/display service state, and user-visible panel status.
+- Rollback condition:
+  - Revert this diagnostic if nonfatal MDSS SMMU fault handling causes a new
+    earlier boot failure, repeated IRQ storms that kill userspace, memory
+    corruption, or hides the fault without leaving useful MDSS evidence.
+- Verification commands:
+  - `ADB_HOST=127.0.0.1 ADB_PORT=15038 ADB_PORTS=15038 SERIAL=30785d1a /srv/forge/android/nx549j/scripts/nx549j-run-attempt112.sh`
+  - `rg -n "NX549J: MDSS SMMU non-fatal|NX549J: MDSS xlog suppressed|arm-smmu|mdss_smmu|mdss_mdp_wait_for_xin_halt|Kernel panic" <capture>/dmesg.txt <capture>/pstore-cat.txt`
+  - `adb -H 127.0.0.1 -P 15038 -s 30785d1a shell 'cat /d/mdp/stat; cat /d/mdp/xlog/dump | tail -200'`
+
+Runtime result:
+
+- FACT: attempt112 runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt112-20260530-mdss-smmu-nonfatal-xin-no-panic/runtime/flash-boot-bcb-20260530-222744`.
+- FACT: boot partition prefix SHA-256 matched attempt112:
+  `05f426d457f1731eb7f4dce64bea0aea23c69c2b73b16a8bb14d4dd59a82279c`.
+- FACT: the runner observed Android `device`, but the phone later returned to
+  recovery; late recovery evidence directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt112-20260530-mdss-smmu-nonfatal-xin-no-panic/runtime/flash-boot-bcb-20260530-222744/after-late-recovery`.
+- FACT: user-visible result: panel blinked once, then continued showing the
+  bootloader logo; no visible boot animation.
+- FACT: pstore confirms Android userspace and boot animation started:
+  `BootAnimationShownTiming`, `SurfaceFlinger Enter boot animation`, and HWC
+  created display 0.
+- FACT: recovery timeout was disarmed correctly:
+  `FRGmark stage=15 name=userspace_reached`,
+  `FRGmark stage=17 name=userspace_ack`, `BCB command cleared`, and
+  `recovery timeout disarmed`.
+- FACT: the attempt112 markers fired: `NX549J: MDSS SMMU non-fatal faults
+  enabled`, `NX549J: ignoring TZ APPS CB21 format failure`, and
+  `NX549J: MDSS xlog suppressed panic for VBIF XIN halt timeout`.
+- FACT: the old `mdss_mdp_wait_for_xin_halt` panic was bypassed, but the next
+  MDSS command-mode timeout panicked:
+  `Kernel panic - not syncing: mdss_mdp_cmd_wait4pingpong`.
+- FACT: this occurred with repeated CB21 MDSS SMMU translation faults and
+  pingpong/fence timeouts:
+  `Unhandled context fault ... cb=21`, `mdp-fence: frame timeout`, and
+  `mdss_mdp_cmd_wait4pingpong:wait4pingpong timed out`.
+- INFERENCE: display has advanced from attach failure to live HWC/bootanim and
+  physical panel power activity, but scanout is still blocked by MDSS SMMU
+  translation faults and command-mode pingpong timeout.
+
+2026-05-30 attempt113 MDSS command pingpong no-panic diagnostic:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for live display evidence.
+- Runtime status: built and verified. Flash/capture is next.
+- Attempt113 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt113-20260530-mdss-cmd-pingpong-no-panic`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt113-20260530-mdss-cmd-pingpong-no-panic/boot-mdss-cmd-pingpong-no-panic-120s.img`.
+- Boot SHA-256:
+  `7d06df1a669b2e991f3510fcec65815560d1d30928dd810472deb98ab822b522`.
+- Image.gz-dtb SHA-256:
+  `38d4935139acedfa18a211ef24d481b15261fb10b4755c34f6ae78fc0b46e32f`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostics, no-BCB gate, pstore
+  config, serial early console config, and ramoops DTB.
+- Source changes:
+  - `drivers/video/fbdev/msm/mdss_mdp_intf_cmd.c` keeps command-mode timeout
+    xlog/register dumps but removes the `panic` token from pingpong,
+    autorefresh-pp, autorefresh-done, and line-out timeout handlers.
+  - New marker strings include
+    `NX549J: MDSS xlog suppressed panic for command pingpong timeout` plus
+    autorefresh and line-out variants.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    requires the command pingpong no-panic marker.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt113*.sh` and latest
+    runner scripts target the exact attempt113 image.
+- Expected next marker:
+  - No `Kernel panic - not syncing: mdss_mdp_cmd_wait4pingpong`.
+  - If Android survives longer, collect live `/d/mdp/stat`, `/d/mdp/xlog/dump`,
+    SurfaceFlinger/HWC dumps, dmesg/logcat, and framebuffer nodes before the
+    next timeout path.
+- Rollback condition:
+  - Revert this diagnostic if command-mode no-panic causes a hard hang with no
+    ADB/pstore gain, masks all useful MDSS fault evidence, or introduces a new
+    non-display regression.
+
+Runtime result:
+
+- FACT: attempt113 runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt113-20260530-mdss-cmd-pingpong-no-panic/runtime/flash-boot-bcb-20260530-224820`.
+- FACT: live black-screen capture directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt113-20260530-mdss-cmd-pingpong-no-panic/runtime/flash-boot-bcb-20260530-224820/live-black-20260530-175634`.
+- FACT: local and live boot partition prefix SHA-256 both matched attempt113:
+  `7d06df1a669b2e991f3510fcec65815560d1d30928dd810472deb98ab822b522`.
+- FACT: Android was alive in the capture: `sys.boot_completed=1`,
+  `init.svc.bootanim=stopped`, root ADB worked, and SurfaceFlinger/HWC could
+  be dumped.
+- FACT: before a wake poke, SurfaceFlinger had internal display power mode
+  `Off`, `isEnabled=false`, display power state `OFF`, and `/d/mdp/stat`
+  showed `intf2 play=0x0 vsync=0x1795 user_bl=0`.
+- FACT: after `svc power stayon true`, wake keyevents, and brightness writes,
+  SurfaceFlinger switched to power mode `On`, display power state `ON`, and
+  `/d/mdp/stat` advanced to `intf2 play=0x2`, but `user_bl` and
+  `/sys/class/leds/lcd-backlight/brightness` stayed `0`.
+- FACT: the live `lcd-backlight` symlink pointed at the writeback/WFD
+  framebuffer parent:
+  `.../qcom,mdss_fb_wfd/leds/lcd-backlight`, not the 1080x1920 panel fb.
+- FACT: `/proc/fb` listed fb0 as `mdssfb_a0000` with 640x640 and fb1 as
+  `mdssfb_90000` with 1080x1920; runtime logs showed WFD probing before the
+  real panel.
+- FACT: dmesg/logcat still contained repeated MDSS SMMU CB21 translation
+  faults, command/fence timeouts, and
+  `mdss_fb_report_panel_dead: Panel has gone bad, sending uevent - PANEL_ALIVE=0`.
+- INFERENCE: attempt113 successfully converted the earlier display panic into
+  a live Android evidence window. The current visible black-screen symptom is
+  at least partly a backlight routing bug: the single Android `lcd-backlight`
+  classdev is bound to WFD because WFD probes first, so userspace brightness
+  writes do not target the physical panel. The remaining lower-layer blocker is
+  still MDSS SMMU/DSI command-mode timeout.
+
+2026-05-30 attempt114 skip WFD lcd-backlight diagnostic:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for physical display backlight
+  routing.
+- Runtime status: built, verified, flashed, and captured. Backlight routing is
+  fixed; physical scanout is still blocked by MDSS/APPS SMMU CB21 faults.
+- Source changes:
+  - `drivers/video/fbdev/msm/mdss_fb.c` now registers the global
+    `lcd-backlight` classdev only for real display panel types
+    `MIPI_VIDEO_PANEL`, `MIPI_CMD_PANEL`, `EDP_PANEL`, and `SPI_PANEL`.
+  - Non-panel framebuffer types, including WFD/writeback, log
+    `NX549J: skipping lcd-backlight for fb...` and leave the single
+    backlight slot free for the later physical panel probe.
+  - Successful physical-panel registration logs
+    `NX549J: registered lcd-backlight for fb...`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now requires the registration marker in `vmlinux`.
+- Expected next marker:
+  - `/sys/class/leds/lcd-backlight` should point at the 1080x1920 panel fb
+    parent instead of `qcom,mdss_fb_wfd`.
+  - A brightness write should no longer read back as permanently `0` solely
+    because WFD owns the classdev.
+  - If the physical panel remains black, keep chasing the repeated
+    `cb=21` SMMU faults, `mdp-fence` timeouts, and `PANEL_ALIVE=0` as the
+    next lower-layer display blocker.
+- Rollback condition:
+  - Revert this diagnostic if `lcd-backlight` disappears completely, the panel
+    fb fails to register, userspace boot regresses before SurfaceFlinger/HWC,
+    or brightness routing is proven unrelated and the WFD binding is required.
+
+Runtime result:
+
+- FACT: attempt114 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt114-20260530-skip-wfd-lcd-backlight`.
+- FACT: boot image SHA-256:
+  `50af3d5c3636874a26cc20911450606fe3523f9bda940483cbbb16ba86bdda9a`.
+- FACT: live display capture directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt114-20260530-skip-wfd-lcd-backlight/runtime/flash-boot-bcb-20260531-023725/live-display-20260531-023913`.
+- FACT: Android reached userspace in the live capture: SurfaceFlinger and HWC
+  were alive, display power was `ON`, and `sys.boot_completed=1`.
+- FACT: `/sys/class/leds/lcd-backlight` now points at the primary panel fb
+  parent, not the WFD framebuffer:
+  `.../qcom,mdss_fb_primary/leds/lcd-backlight`.
+- FACT: `/proc/fb` still listed WFD first as fb0 at 640x640 and the physical
+  1080x1920 panel as fb1, but the global `lcd-backlight` classdev was no
+  longer stolen by WFD.
+- FACT: brightness was writable and readable on the physical panel path:
+  `brightness=127`, `max_brightness=255`, and `/d/mdp/stat` showed
+  `user_bl=127`.
+- FACT: the visible screen remained black because MDSS still hit repeated APPS
+  SMMU CB21 scanout faults:
+  `mdss_smmu_fault_handler: iova:0x8807000 flags:0x25`,
+  `arm-smmu ... Unhandled context fault ... SID=0xc00 ... cb=21`,
+  `mdss_mdp_cmd_wait4pingpong:wait4pingpong timed out`, `mdp-fence` timeout,
+  and `PANEL_ALIVE=0`.
+- INFERENCE: WFD/backlight misbinding was a real bug and is now cleared from
+  the primary blocker list. The remaining black-screen root blocker is the
+  APPS SMMU static context-bank handoff for MDSS unsecure CB21: software can
+  resolve the IOVA, but the hardware translation path faults at scanout.
+
+2026-05-31 attempt115 MDSS APPS CB21 AArch32-LPAE isolation:
+
+- Patch category: DIAGNOSTIC / ISOLATION for the MDSS/APPS SMMU handoff.
+- Runtime status: built, verified, flashed, and captured. The CB21 SMMU fault
+  pattern is gone in the live capture; if the physical panel is still black,
+  the next blocker is below SurfaceFlinger/HWC/MDP scanout, in DSI panel power
+  or init.
+- Attempt115 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt115-20260531-mdss-cb21-aarch32-lpae`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt115-20260531-mdss-cb21-aarch32-lpae/boot-mdss-cb21-aarch32-lpae-120s.img`.
+- Boot SHA-256:
+  `9586fa0b9e22e8dde41195511e1f5e7f0978f8c143190e7ae9fdddeffff28acd`.
+- Image.gz-dtb SHA-256:
+  `4dd561cd8379ee73f256e4dc90b6a1e8fef44adfa48cc59487a2bada553fda9c`.
+- vmlinux SHA-256:
+  `9ace10a3722ef99649df130e18f4504a932c9362ccfd9a4eb57b30cebc051e0d`.
+- DTB SHA-256:
+  `0456a1dabcf37e77bcdab206c8e61582b18dcdec12f3880bf9a6af457ac5400d`.
+- FACT: `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline, required
+  symbols, required marker strings, ramdisk diagnostics, no-BCB gate, pstore
+  config, serial early console config, and ramoops DTB.
+- Source changes:
+  - `drivers/iommu/arm-smmu.c` detects `TZ_DEVICE_APPS` + static CB21 + S1
+    MDSS domain allocation and forces that context to `ARM_SMMU_CTX_FMT_AARCH32_L`
+    when AArch32 LPAE is supported.
+  - The diagnostic caps MDSS CB21 input address size to 32 bits and output
+    address size to 40 bits for the matching 32-bit LPAE translation format.
+  - The new marker is
+    `NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    requires the new marker, and the latest runner scripts target the exact
+    attempt115 boot SHA above.
+- Reasoning:
+  - FACT: the active DTB maps MDSS unsecure SID `0xc00` through APPS SMMU CB21.
+  - FACT: the 3.18 stock/highwaystar SMMU DTS also places `mdp_0` at APPS CB21
+    (`0x1e35000` with `qcom,cb-base-offset = <0x20000>`), so the context-bank
+    number itself is not random.
+  - FACT: TrustZone returned `-22` for the APPS CB21 AArch64 format switch, and
+    attempt111+ only tolerated that failure to get farther.
+  - INFERENCE: firmware likely leaves CB21 in the 3.18/32-bit LPAE format.
+    Masking the TZ error while keeping 4.9's AArch64 software context may leave
+    the hardware and software page-table formats mismatched, causing the
+    repeated scanout faults.
+- Expected next marker:
+  - Dmesg should contain
+    `NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE`.
+  - If the hypothesis is right, the repeated `cb=21` MDSS context faults should
+    disappear or change substantially before the next DSI/panel failure.
+  - If the screen remains black, collect fresh `/d/mdp/stat`, `/d/mdp/xlog/dump`,
+    dmesg, logcat, SurfaceFlinger/HWC dumps, `/proc/fb`, and the
+    `lcd-backlight` symlink/brightness values.
+- Rollback condition:
+  - Revert this diagnostic if it regresses boot before Android userspace,
+    prevents MDSS attach, introduces new APPS SMMU faults outside MDSS CB21, or
+    leaves the same `cb=21` fault pattern unchanged after a verified attempt115
+    boot.
+
+Runtime result:
+
+- FACT: attempt115 runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt115-20260531-mdss-cb21-aarch32-lpae/runtime/flash-boot-bcb-20260531-032131`.
+- FACT: live display capture directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt115-20260531-mdss-cb21-aarch32-lpae/runtime/flash-boot-bcb-20260531-032131/live-display-20260531-032343`.
+- FACT: live boot partition prefix SHA-256 matched attempt115:
+  `9586fa0b9e22e8dde41195511e1f5e7f0978f8c143190e7ae9fdddeffff28acd`.
+- FACT: Android reached userspace and boot completed:
+  `sys.boot_completed=1`, `init.svc.bootanim=stopped`, SurfaceFlinger had an
+  enabled internal 1080x1920 display, and HWC display 0 was present.
+- FACT: a valid `screencap -p` image was captured at
+  `screencap-execout.png`; the compositor content is normal Android lock/home
+  UI at 1080x1920.
+- FACT: the new marker fired:
+  `NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE`.
+- FACT: fresh `dmesg-after.txt` and `logcat-all-after.txt` no longer contain
+  the old MDSS/APPS CB21 blockers: no `Unhandled context fault`, no
+  `mdss_smmu_fault_handler`, no `wait4pingpong`, no `mdp-fence` timeout, and
+  no `PANEL_ALIVE=0`.
+- FACT: backlight routing stayed fixed: `/sys/class/leds/lcd-backlight` points
+  at `qcom,mdss_fb_primary`, and a write/read test changed brightness from
+  `14` to `180` with `max_brightness=255`.
+- FACT: MDP debugfs shows active scanout rather than a stalled pipe:
+  `Control path #0 - MIPI_CMD`, `Panel #0 1080x1920p60`, `Play Count=2`,
+  `Underrun Count=0`, four active SSPP pipes, and `domain=mdp_unsecure`.
+- FACT: DSI registration still shows suspicious panel-power/init evidence:
+  the first DSI probe hit `lab get failed. rc=-517`, then the later probe
+  registered the panel with `Continuous splash enabled`; the active panel DTS
+  lacks several stock Nubia sideband properties such as CE/CABC commands and
+  the Nubia backlight curve.
+- INFERENCE: attempt115 likely fixed the IOMMU-format blocker rather than just
+  hiding it. If the physical LCD still shows black while screencap/MDP are
+  correct, the remaining issue is DSI panel bring-up state: LAB/IBB sequencing,
+  reset/on-command timing, or missing Nubia panel extension behavior.
+
+Component sidecar notes for post-display batch:
+
+- FACT: Wi-Fi userspace opens `/dev/wcnss_wlan` and `/dev/wcnss_ctrl`; current
+  runtime `Bad address` maps to the WCNSS char device/open path, with firmware
+  and `/persist/WCNSS_qcom_wlan_nv.bin` still needing confirmation.
+- FACT: BT init expects `/system/vendor/bin/wcnss_filter`, but active vendor
+  prebuilts appear to lack `wcnss_filter`; BT protocol config also needs
+  generated `.config` review before changing.
+- FACT: RIL/vendor packaging appears incomplete for Android 11 radio:
+  `qcrild`, `qmuxd`, `port-bridge`, `ipacm`, and several init rc sidecars are
+  declared/expected but not present in active vendor prebuilts.
+- FACT: Touch DTS node `synaptics_dsx@20` names pinctrl states
+  `pmx_ts_int_active` / `pmx_ts_int_suspend` while the active driver expects
+  `synaptics_pin_active` / `synaptics_pin_suspend`; first patch should be
+  DTS-only after display evidence is stable.
+- FACT: Goodix fingerprint kernel/DTS wiring exists, but `fps_hal` is disabled
+  with no active start trigger; the first userspace fix should start
+  `goodix_script` and `fps_hal` when `sys.fp.vendor=goodix`, then verify the
+  selected `fingerprint.default.so` vs Goodix module mapping.
+
+2026-05-31 attempt116 DSI stock vddio/l22 parity diagnostic:
+
+- Patch category: DIAGNOSTIC / ISOLATION for physical DSI panel power wiring
+  after SurfaceFlinger/HWC/MDP scanout became healthy.
+- Runtime status: built and verified; latest runner scripts target attempt116.
+- Attempt116 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt116-20260531-dsi-stock-vddio-l22`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt116-20260531-dsi-stock-vddio-l22/boot-dsi-stock-vddio-l22-120s.img`.
+- Boot SHA-256:
+  `aa7f48de432b0813526cc0c014075fb7929ae1c418fddf97b61366741943ffe2`.
+- Image.gz-dtb SHA-256:
+  `e064c8536c950cacab7663687b99776371e5626b3819672f1cdfd08253926c12`.
+- DTB SHA-256:
+  `caeb703f02f33aff182cc8b1697b725fd5722cc95a8b04e69cb4af382f2ccf08`.
+- FACT: stock 3.18 NX549J DTS deletes `vdd-supply` on `mdss_dsi0` and
+  `mdss_dsi1`, and sets `vddio-supply = <&pm8953_l22>`.
+- FACT: attempt115 live regulator dump showed `pm8953_l6` enabled as the
+  inherited 4.9 DSI IO rail while stock `pm8953_l22` stayed disabled.
+- Source changes:
+  - `arch/arm64/boot/dts/qcom/msm8953-mtp-nx549j.dts` now deletes inherited
+    `vdd-supply` and assigns `vddio-supply = <&pm8953_l22>` for both DSI0 and
+    DSI1, matching stock NX549J 3.18.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now decompiles the packaged DTB and fails the release if either DSI node
+    still has inherited `vdd-supply` or if `vddio-supply` does not point at
+    `regulator-l22`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt116*.sh` and latest
+    runner scripts target the exact attempt116 boot SHA above.
+- FACT: attempt116 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  symbols, marker strings, ramdisk diagnostics, no-BCB gate, pstore config,
+  serial console config, ramoops DTB, and `DSI supply DTB parity`.
+- Expected next marker:
+  - Fresh dmesg should still contain
+    `NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE`.
+  - Regulator runtime evidence should show `pm8953_l22` enabled during panel
+    bring-up, with no regression to old MDSS SMMU context faults.
+  - If physical LCD remains black while `screencap`, HWC, MDP, and backlight
+    are healthy, continue to stock panel reset/on-command timing and Nubia
+    panel sideband properties.
+- Rollback condition:
+  - Revert this diagnostic if the DSI controller probe fails earlier than
+    attempt115, Android no longer reaches userspace, the panel loses LAB/IBB
+    rails, or runtime evidence proves the stock l22 wiring is not used by this
+    hardware revision.
+
+Runtime result:
+
+- FACT: attempt116 runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt116-20260531-dsi-stock-vddio-l22/runtime/flash-boot-bcb-20260531-034016`.
+- FACT: live display capture directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt116-20260531-dsi-stock-vddio-l22/runtime/flash-boot-bcb-20260531-034016/live-display-20260531-034250`.
+- FACT: live boot partition prefix SHA-256 matched attempt116:
+  `aa7f48de432b0813526cc0c014075fb7929ae1c418fddf97b61366741943ffe2`.
+- FACT: attempt116 regressed before normal display registration:
+  `pm8953_l22: requested voltage range [1800000, 1800000] does not fit within
+  constraints: [2800000, 2850000]`, followed by
+  `vddio set vltg fail` and `mdss_dsi_ctrl0 failed with error -22`.
+- FACT: `sys.boot_completed` stayed empty, SurfaceFlinger was `restarting`,
+  `screencap-execout.png` was empty, and `/sys/class/leds/lcd-backlight`
+  was absent in the attempt116 capture.
+- INFERENCE: DSI controller phandle parity alone is incomplete in 4.9. If the
+  stock L22 rail is used, the NX549J panel-supply voltage table must also be
+  made compatible with L22's 2.8-2.85 V regulator constraints.
+
+2026-05-31 attempt117 DSI L22 voltage-table diagnostic:
+
+- Patch category: DIAGNOSTIC / ISOLATION for the same physical-panel power
+  hypothesis, now including the voltage table required for 4.9 regulator
+  validation.
+- Runtime status: built and verified; latest runner scripts target attempt117.
+- Attempt117 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt117-20260531-dsi-l22-voltage-table`.
+- Boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt117-20260531-dsi-l22-voltage-table/boot-dsi-l22-voltage-table-120s.img`.
+- Boot SHA-256:
+  `f64e65f7a298ba3befdecc812351cdb023644fa900e5bc086f5e8fa6bdff7938`.
+- Image.gz-dtb SHA-256:
+  `ec67afb48c722e5ba4a56761b5473508c836767021c768a4139bc5bd3ca8736d`.
+- DTB SHA-256:
+  `c3dea165f9877a4ab5ec1f530ebd9546981e40755c95cde184353050a825a237`.
+- Source changes:
+  - `arch/arm64/boot/dts/qcom/msm8953-mdss-panels-nx549j.dtsi` sets the
+    NX549J JDI `vddio` panel supply range to `2800000..2850000`, matching
+    `pm8953_l22` constraints in this 4.9 tree.
+  - `/srv/forge/android/nx549j/scripts/nx549j-verify-release-artifact.sh`
+    now fails the release unless the compiled DTB has DSI0/DSI1 on L22 and
+    NX549J panel entry@0 voltage range `2800000..2850000`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt117*.sh` and latest
+    runner scripts target the exact attempt117 boot SHA above.
+- FACT: attempt117 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  symbols, marker strings, ramdisk diagnostics, no-BCB gate, pstore config,
+  serial console config, ramoops DTB, and `DSI supply DTB parity`.
+- Expected next marker:
+  - DSI probe should no longer fail at `vddio set vltg fail`.
+  - If panel registration succeeds, collect whether `pm8953_l22`, LAB, and IBB
+    are enabled and whether `screencap`, SurfaceFlinger, MDP, and physical
+    panel behavior match or diverge.
+- Rollback condition:
+  - Revert attempt117 if it still fails at DSI regulator setup, regresses
+    before userspace compared with attempt115, or runtime proves the hardware
+    needs the old L6 1.8 V path rather than L22.
+
+Runtime result:
+
+- FACT: attempt117 runtime flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt117-20260531-dsi-l22-voltage-table/runtime/flash-boot-bcb-20260531-035218`.
+- FACT: live display capture directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt117-20260531-dsi-l22-voltage-table/runtime/flash-boot-bcb-20260531-035218/live-display-20260531-035348`.
+- FACT: live boot partition prefix SHA-256 matched attempt117:
+  `f64e65f7a298ba3befdecc812351cdb023644fa900e5bc086f5e8fa6bdff7938`.
+- FACT: Android reached normal userspace: `sys.boot_completed=1`,
+  `dev.bootcomplete=1`, `init.svc.bootanim=stopped`, and
+  `init.svc.surfaceflinger=running`.
+- FACT: `screencap-execout.png` is a valid 1080x1920 PNG showing the Android
+  launcher/loading UI.
+- FACT: the attempt116 regulator failure is gone on the successful second DSI
+  probe. The first early probe still logs transient `lab get failed. rc=-517`,
+  but the later probe reaches
+  `mdss_dsi_ctrl_probe: Dsi Ctrl->0 initialized, DSI rev:0x10040002, PHY rev:0x2`.
+- FACT: `pm8953_l22` is enabled with two users at 2800 mV, and debugfs shows
+  `1a94000.qcom,mdss_dsi_ctrl0-vddio` under regulator-l22. LAB and IBB are
+  also enabled at 5500 mV.
+- FACT: backlight remains correctly routed to the primary physical panel fb:
+  `/sys/class/leds/lcd-backlight -> ...qcom,mdss_fb_primary/leds/lcd-backlight`,
+  with brightness `180` and max `255`.
+- FACT: MDP/SF state is healthy: SurfaceFlinger display 0 is enabled and
+  `powerMode=On`, display service reports the internal 1080x1920 display
+  `state ON`, `/d/mdp/stat` has `play=2`, `underrun=0`, `user_bl=180`, and
+  `/d/mdp/dump` shows active MIPI_CMD scanout.
+- FACT: fresh dmesg/logcat retain the CB21 format marker:
+  `NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE`.
+- INFERENCE: attempt117 closes the DSI regulator mismatch introduced by
+  attempt116 and preserves the attempt115 SMMU/backlight fixes. If the
+  physical LCD is still black while the capture is this healthy, the next
+  display blocker is likely panel command/init parity or Nubia-specific panel
+  extension behavior, not APPS SMMU, generic MDP scanout, or regulator
+  enablement.

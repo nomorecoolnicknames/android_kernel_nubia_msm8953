@@ -310,6 +310,19 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 
 static int lcd_backlight_registered;
 
+static bool mdss_fb_should_register_backlight(struct msm_fb_data_type *mfd)
+{
+	switch (mfd->panel.type) {
+	case MIPI_VIDEO_PANEL:
+	case MIPI_CMD_PANEL:
+	case EDP_PANEL:
+	case SPI_PANEL:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				      enum led_brightness value)
 {
@@ -1391,13 +1404,21 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	pm_runtime_enable(mfd->fbi->dev);
 
 	/* android supports only one lcd-backlight/lcd for now */
-	if (!lcd_backlight_registered) {
+	if (!lcd_backlight_registered && mdss_fb_should_register_backlight(mfd)) {
 		backlight_led.brightness = mfd->panel_info->brightness_max;
 		backlight_led.max_brightness = mfd->panel_info->brightness_max;
-		if (led_classdev_register(&pdev->dev, &backlight_led))
+		if (led_classdev_register(&pdev->dev, &backlight_led)) {
 			pr_err("led_classdev_register failed\n");
-		else
+		} else {
+			pr_info("NX549J: registered lcd-backlight for fb%d type=%d %ux%u\n",
+				mfd->index, mfd->panel.type,
+				mfd->panel_info->xres, mfd->panel_info->yres);
 			lcd_backlight_registered = 1;
+		}
+	} else if (!lcd_backlight_registered) {
+		pr_info("NX549J: skipping lcd-backlight for fb%d type=%d %ux%u\n",
+			mfd->index, mfd->panel.type,
+			mfd->panel_info->xres, mfd->panel_info->yres);
 	}
 
 	mdss_fb_init_panel_modes(mfd, pdata);

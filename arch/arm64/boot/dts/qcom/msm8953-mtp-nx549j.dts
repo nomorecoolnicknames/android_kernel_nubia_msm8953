@@ -95,12 +95,16 @@
 	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
 	qcom,platform-te-gpio = <&tlmm 24 0>;
 	qcom,platform-reset-gpio = <&tlmm 61 0>;
+	/delete-property/ vdd-supply;
+	vddio-supply = <&pm8953_l22>;
 	qcom,dsi-pref-prim-pan = <&dsi_jdi_s6d1fa4x01_1080p_5p2_cmd
 				  &dsi_boe_otm1906c_1080p_5p2_cmd>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_nx549j>;
 };
 
 &mdss_dsi1 {
+	/delete-property/ vdd-supply;
+	vddio-supply = <&pm8953_l22>;
 	status = "disabled";
 };
 

@@ -861,6 +861,20 @@ int mdss_smmu_probe(struct platform_device *pdev)
 		}
 	}
 
+	{
+		int non_fatal_faults = 1;
+
+		rc = iommu_domain_set_attr(mdss_smmu->mmu_mapping->domain,
+			DOMAIN_ATTR_NON_FATAL_FAULTS, &non_fatal_faults);
+		if (rc) {
+			pr_warn("NX549J: MDSS SMMU non-fatal faults enable failed for domain[%d] rc:%d\n",
+				smmu_domain.domain, rc);
+		} else {
+			pr_warn("NX549J: MDSS SMMU non-fatal faults enabled for domain[%d]\n",
+				smmu_domain.domain);
+		}
+	}
+
 	if (!mdata->handoff_pending)
 		mdss_smmu_enable_power(mdss_smmu, false);
 	else

@@ -4671,8 +4671,9 @@ int mdss_mdp_wait_for_xin_halt(u32 xin_id, bool is_vbif_nrt)
 	if (rc == -ETIMEDOUT) {
 		pr_err("VBIF client %d not halting. TIMEDOUT.\n",
 			xin_id);
+		pr_warn_once("NX549J: MDSS xlog suppressed panic for VBIF XIN halt timeout\n");
 		MDSS_XLOG_TOUT_HANDLER("mdp", "vbif", "vbif_nrt",
-			"dbg_bus", "vbif_dbg_bus", "panic");
+			"dbg_bus", "vbif_dbg_bus");
 	} else {
 		pr_debug("VBIF client %d is halted\n", xin_id);
 	}

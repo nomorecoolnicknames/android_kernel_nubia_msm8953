@@ -1999,6 +1999,23 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 		goto out_unlock;
 	cfg->cbndx = ret;
 
+	/*
+	 * NX549J stock firmware leaves MDSS non-secure scanout on APPS CB21.
+	 * Its TZ refuses the AArch64 context-format switch for this CB, so keep
+	 * the 32-bit LPAE format used by the downstream 3.18 handoff path.
+	 */
+	if (smmu->sec_id == TZ_DEVICE_APPS && cfg->cbndx == 21 &&
+	    smmu_domain->stage == ARM_SMMU_DOMAIN_S1 &&
+	    cfg->fmt == ARM_SMMU_CTX_FMT_AARCH64 &&
+	    (smmu->features & ARM_SMMU_FEAT_FMT_AARCH32_L)) {
+		cfg->fmt = ARM_SMMU_CTX_FMT_AARCH32_L;
+		fmt = ARM_32_LPAE_S1;
+		ias = min(ias, 32UL);
+		oas = min(oas, 40UL);
+		dev_warn(smmu->dev,
+			 "NX549J: forcing APPS CB21 MDSS context to AArch32 LPAE\n");
+	}
+
 	if (smmu->version < ARM_SMMU_V2) {
 		cfg->irptndx = atomic_inc_return(&smmu->irptndx);
 		cfg->irptndx %= smmu->num_context_irqs;

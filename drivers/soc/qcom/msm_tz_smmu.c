@@ -121,6 +121,12 @@ int msm_tz_set_cb_format(enum tz_smmu_device_id sec_id, int cbndx)
 			SMMU_CHANGE_PAGETABLE_FORMAT), &desc);
 
 	if (ret) {
+		if (sec_id == TZ_DEVICE_APPS && cbndx == 21 && ret == -EINVAL) {
+			pr_warn_once("NX549J: ignoring TZ APPS CB21 format failure ret %d for MDSS scanout diagnostic\n",
+				     ret);
+			return 0;
+		}
+
 		WARN(1, "Format change failed for CB %d with ret %d\n",
 		     cbndx, ret);
 		return ret;

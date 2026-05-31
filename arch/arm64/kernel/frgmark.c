@@ -109,6 +109,7 @@ static void frgmark_prime_recovery_selectors(const char *reason);
 static void frgmark_arm_early_recovery_guard(const char *reason);
 static int frgmark_write_recovery_bcb(const char *reason);
 static int frgmark_clear_recovery_bcb(const char *reason);
+static void frgmark_userspace_ack(const char *reason);
 
 static const char *frgmark_stage_name(u8 stage)
 {
@@ -235,6 +236,18 @@ static const char *frgmark_stage_name(u8 stage)
 		return "initcall_device_done";
 	case FRGMARK_STAGE_INITCALL_LATE_DONE:
 		return "initcall_late_done";
+	case FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_BEGIN:
+		return "kernel_init_console_open_begin";
+	case FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_DONE:
+		return "kernel_init_console_open_done";
+	case FRGMARK_STAGE_KERNEL_INIT_RAMDISK_CMD_READY:
+		return "kernel_init_ramdisk_cmd_ready";
+	case FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_BEGIN:
+		return "kernel_init_prepare_ns_begin";
+	case FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_DONE:
+		return "kernel_init_prepare_ns_done";
+	case FRGMARK_STAGE_KERNEL_INIT_DEFAULT_MODULES_DONE:
+		return "kernel_init_default_modules_done";
 	case FRGMARK_STAGE_RECOVERY_NO_BCB_GRACE:
 		return "recovery_no_bcb_grace";
 	case FRGMARK_STAGE_RECOVERY_NO_BCB_RESET:
@@ -641,7 +654,8 @@ static int frgmark_write_bcb_bio(struct block_device *bdev, void *buf)
 	return ret;
 }
 
-static int frgmark_write_bcb_page(const char *reason, bool recovery)
+static int frgmark_write_bcb_page(const char *reason, bool recovery,
+				  bool refresh)
 {
 	struct block_device *bdev;
 	void *buf;
@@ -649,7 +663,7 @@ static int frgmark_write_bcb_page(const char *reason, bool recovery)
 	int ret;
 	int flush_ret;
 
-	if (recovery && frg_recovery_bcb_written)
+	if (recovery && frg_recovery_bcb_written && !refresh)
 		return 0;
 	if (!recovery && frg_recovery_bcb_cleared)
 		return 0;
@@ -694,10 +708,15 @@ static int frgmark_write_bcb_page(const char *reason, bool recovery)
 	}
 
 	if (recovery) {
+		bool was_written = frg_recovery_bcb_written;
+
 		frg_recovery_bcb_written = true;
-		pr_emerg("FRGmark: BCB recovery command written reason=%s devt=%u:%u artifact=%s\n",
-			 reason ? reason : "unknown", frg_bcb_misc_major,
-			 frg_bcb_misc_minor, FRG_RECOVERY_TIMEOUT_ARTIFACT);
+		pr_emerg("FRGmark: BCB recovery command %s reason=%s stage=%02x name=%s devt=%u:%u artifact=%s\n",
+			 was_written ? "refreshed" : "written",
+			 reason ? reason : "unknown", frg_last_stage,
+			 frgmark_stage_name(frg_last_stage),
+			 frg_bcb_misc_major, frg_bcb_misc_minor,
+			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 		frgmark_enable_recovery_panic_reboot(reason);
 	} else {
 		frg_recovery_bcb_cleared = true;
@@ -710,12 +729,19 @@ static int frgmark_write_bcb_page(const char *reason, bool recovery)
 
 static int frgmark_write_recovery_bcb(const char *reason)
 {
-	return frgmark_write_bcb_page(reason, true);
+	return frgmark_write_bcb_page(reason, true, false);
 }
 
 static int frgmark_clear_recovery_bcb(const char *reason)
 {
-	return frgmark_write_bcb_page(reason, false);
+	return frgmark_write_bcb_page(reason, false, false);
+}
+
+static int frgmark_refresh_recovery_bcb(const char *reason)
+{
+	if (!frg_recovery_bcb_written)
+		return 0;
+	return frgmark_write_bcb_page(reason, true, true);
 }
 
 static bool frgmark_drop_mapped_pshold(const char *reason)
@@ -949,6 +975,61 @@ static void frgmark_maybe_checkpoint_bcb(u8 stage)
 	}
 }
 
+static void frgmark_maybe_refresh_bcb(u8 stage)
+{
+	const char *reason = NULL;
+
+	if (!frg_recovery_timeout_armed || frg_recovery_userspace_done ||
+	    frg_recovery_timeout_done || !frg_recovery_bcb_written)
+		return;
+
+	switch (stage) {
+	case FRGMARK_STAGE_KERNEL_FREEABLE_DONE:
+		reason = "kernel-freeable-done";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_BEGIN:
+		reason = "console-open-begin";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_CONSOLE_OPEN_DONE:
+		reason = "console-open-done";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_RAMDISK_CMD_READY:
+		reason = "ramdisk-cmd-ready";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_BEGIN:
+		reason = "prepare-namespace-begin";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_PREPARE_NS_DONE:
+		reason = "prepare-namespace-done";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_DEFAULT_MODULES_DONE:
+		reason = "default-modules-done";
+		break;
+	case FRGMARK_STAGE_KERNEL_INIT_FREEABLE_DONE:
+		reason = "kernel-init-freeable-done";
+		break;
+	case FRGMARK_STAGE_EXEC_RAMDISK_INIT:
+		reason = "exec-ramdisk-init";
+		break;
+	case FRGMARK_STAGE_EXEC_RAMDISK_INIT_FAILED:
+		reason = "exec-ramdisk-init-failed";
+		break;
+	case FRGMARK_STAGE_EXEC_CMDLINE_INIT:
+		reason = "exec-cmdline-init";
+		break;
+	case FRGMARK_STAGE_EXEC_FALLBACK_INIT:
+		reason = "exec-fallback-init";
+		break;
+	case FRGMARK_STAGE_USERSPACE_REACHED:
+		reason = "userspace-reached";
+		break;
+	default:
+		return;
+	}
+
+	frgmark_refresh_recovery_bcb(reason);
+}
+
 void __init frgmark_recovery_timeout_arm(void)
 {
 	if (!frg_recovery_timeout_armed || frg_recovery_timeout_work_armed)
@@ -987,8 +1068,9 @@ void frgmark_userspace_reached(void)
 
 	frg_recovery_userspace_exec_seen = true;
 	frgmark(FRGMARK_STAGE_USERSPACE_REACHED);
-	pr_emerg("FRGmark: userspace exec reached, waiting for userspace ack artifact=%s\n",
+	pr_emerg("FRGmark: userspace exec reached, auto-acking recovery timeout artifact=%s\n",
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+	frgmark_userspace_ack("userspace-reached");
 }
 EXPORT_SYMBOL(frgmark_userspace_reached);
 
@@ -1147,6 +1229,7 @@ void frgmark(u8 stage)
 		 frgmark_stage_name(stage));
 	nx549j_splashprobe_frg_stage(stage);
 	frgmark_maybe_checkpoint_bcb(stage);
+	frgmark_maybe_refresh_bcb(stage);
 	frgmark_maybe_force_reset(stage);
 	frgmark_maybe_force_panic(stage);
 }
