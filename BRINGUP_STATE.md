@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-05-31T07:50:00Z
+Last updated: 2026-05-31T08:25:00Z
 
 ## Objective
 
@@ -6079,3 +6079,28 @@ Runtime result:
   - Revert the RIL/blob wiring only if fresh boot logs show these Q RIL blobs
     are ABI-incompatible with the active userspace; do not restore the old
     zero-byte or missing executables.
+
+Final packaged artifact for this batch:
+
+- Attempt119 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt119-20260531-ril-qrtr-systemimage`.
+- Verified boot image:
+  `/srv/forge/work/nx549j-preserve/release-attempt119-20260531-ril-qrtr-systemimage/boot-ril-qrtr-system-120s.img`.
+- Boot SHA-256:
+  `dd09e2ceb5174c05845754e51c6f4918abba5ebacb87c33ea8121b122dd25419`.
+- OTA zip:
+  `/srv/forge/work/nx549j-preserve/release-attempt119-20260531-ril-qrtr-systemimage/lineage-18.1-20260531-UNOFFICIAL-nx549j-ril-qrtr.zip`.
+- OTA SHA-256:
+  `589a22fc9cf2020b69795b7fd92dbef5b2ab92f2f70ff6f9541272673e5b972e`.
+- Sparse system image:
+  `/srv/forge/work/nx549j-preserve/release-attempt119-20260531-ril-qrtr-systemimage/system-ril-qrtr.img`.
+- System image SHA-256:
+  `94a1db5ac6b649ebafa1027469da9bb23363ec0834998f9e415d2b94787cc0f1`.
+- FACT: `mka systemimage -j1` and `mka otapackage -j1` completed
+  successfully on 2026-05-31.
+- FACT: attempt119 `VERIFY.md` reports PASS for SHA256SUMS, boot cmdline,
+  symbols, marker strings, ramdisk diagnostics, no-BCB gate, pstore config,
+  serial early console config, ramoops DTB, and DSI supply parity.
+- Flashing note: `system-ril-qrtr.img` is Android sparse. Do not write it with
+  plain recovery `dd` unless first converted with `simg2img`; the OTA zip is
+  the safer artifact for full userspace component testing.
