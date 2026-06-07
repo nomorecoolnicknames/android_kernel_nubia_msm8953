@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:16:58-05:00
+Last updated: 2026-06-07T13:22:41-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `74004dff18035d6dd2dcde1b2be2561a4b0368f321ed3ea3a84e63e34a80c7a6`
+    `2bb768d416ea59e23a6c1ae1f263b345259a1a87e3d758133edf7c4b1f6a849f`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -103,6 +103,15 @@ Static release evidence:
   It also refuses to write in fastboot unless `getvar product` matches
   `EXPECTED_FASTBOOT_PRODUCT_REGEX`, defaulting to
   `^(nx549j|NX549J|msm8953|MSM8953)$`.
+- `SPARSE_IMAGE_FS_AUDIT.md` records host-side sparse-to-raw conversion and
+  read-only filesystem checks for `fastboot-system.img` and
+  `fastboot-vendor.img`. SHA-256:
+  `942c23aa33676bf71e8e4f4d7c1795714cf8598758f3b80bc2a7fb90bf1099bb`.
+  Audit result:
+  - `fastboot-system.img` expands to `4294967296` bytes and passes
+    `e2fsck -fn`
+  - `fastboot-vendor.img` expands to `300384256` bytes and passes
+    `e2fsck -fn`
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
