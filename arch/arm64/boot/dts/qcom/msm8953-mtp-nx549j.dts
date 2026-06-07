@@ -58,8 +58,7 @@
 /{
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
-		#include "batterydata-itech-3000mah.dtsi"
-		#include "batterydata-ascent-3450mAh.dtsi"
+		#include "nx549j/batterydata-ztemt-4v4-3000mah.dtsi"
 	};
 };
 
