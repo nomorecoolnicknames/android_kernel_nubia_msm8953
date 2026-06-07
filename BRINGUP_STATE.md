@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:11:39-05:00
+Last updated: 2026-06-07T13:16:58-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `e66a414ff1435d40247d497c935e50992513441f6a0e9fa2da55eaa10dd87ead`
+    `74004dff18035d6dd2dcde1b2be2561a4b0368f321ed3ea3a84e63e34a80c7a6`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -80,7 +80,9 @@ Static release evidence:
 - `attempt165-release.env` records machine-readable release identity,
   immutable build-code refs, expected runtime identity, no-wipe policy, oem
   vendor target, rollback dir, and key artifact SHA-256 values. SHA-256:
-  `84e6aaf5f6f4fccab5c5cbdbd77f41c85d8387b3c499766963c26afd9c8b52db`.
+  `e5b8b59439968b5ecebb6bf735460f06d40da5f4839aa1db83896d45ae892cca`.
+  It also records the default fastboot product allowlist regex
+  `^(nx549j|NX549J|msm8953|MSM8953)$`.
 - `run-attempt165-nowipe-and-capture.sh` now copies
   `attempt165-release.env` to each flash-run as `release_identity.env`, copies
   the release `SHA256SUMS` as `release_SHA256SUMS`, and writes
@@ -97,7 +99,10 @@ Static release evidence:
   recorded NX549J partition sizes before the ADB-dependent checks. This keeps
   the size guard active even if the phone is already in fastboot and Android
   ADB is unavailable. SHA-256:
-  `0ddb949a6fe393a32ffac42d5d6ff4d19eed71288961ab0daa7b933ec4be9d46`.
+  `f3f945dcdc3b49710e1b583a133c05de29fedd5ac10317580cdee91757fc68cb`.
+  It also refuses to write in fastboot unless `getvar product` matches
+  `EXPECTED_FASTBOOT_PRODUCT_REGEX`, defaulting to
+  `^(nx549j|NX549J|msm8953|MSM8953)$`.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
