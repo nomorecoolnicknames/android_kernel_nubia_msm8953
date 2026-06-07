@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T07:55:00-05:00
+Last updated: 2026-06-07T09:01:09-05:00
 
 ## Objective
 
@@ -31,6 +31,63 @@ persistence path.
 - Preserved 4.9 artifacts:
   - `/srv/forge/work/nx549j-preserve/Image.gz-dtb-nx549j-4.9`
   - `/srv/forge/work/nx549j-preserve/nx549j-boot-test-01.img`
+
+## 2026-06-07 attempt161 full ROM build with ZTEMT batt-id 460
+
+Patch category: PROPER-FIX / PACKAGING-FIX.
+
+Facts:
+- Full `m bacon -j2` completed successfully in the LineageOS 18.1 ROM tree.
+- Attempt160 failed only at final OTA packaging:
+  `ota_from_target_files.py` raised `KeyError: '/system'`.
+- Root cause:
+  recovery fstab had `/system_root`, but this product sets
+  `BOARD_BUILD_SYSTEM_ROOT_IMAGE := false`; LineageOS 18.1 non-A/B
+  `ota_from_target_files` needs a `/system` fstab entry to resolve the block
+  device for system payload generation.
+- Device-tree fix:
+  `device/nubia/msm8953-common/rootdir/etc/fstab_recovery.qcom` now uses
+  `/system`, and `device/nubia/nx549j/rootdir/init.recovery.qcom.rc` now sets
+  `ro.build.system_root_image=false`.
+- Final ROM ZIP:
+  `/srv/forge/android/nx549j/rom-nx549j-lineage-18.1-tissot/out/target/product/nx549j/lineage-18.1-20260607-UNOFFICIAL-nx549j.zip`
+- Preserved attempt161 release:
+  `/srv/forge/work/nx549j-preserve/release-attempt161-20260607-full-rom-ztemt-battid460/`
+- ROM ZIP SHA-256:
+  `ff3cda4a9622f1f7fea402f556d4d33b9de0096cc2ff10fea679736c9e382df3`
+- Final boot image SHA-256:
+  `850419c7b2129ba59390f1d9a93d4082103fe11b2e10995ef6d3335e0b1cebc3`
+- Final recovery image SHA-256:
+  `fda0b9fb96ab9acb98b01136247193e4585a8feb097cfc8489931e2452eb7f5f`
+- Final target-files `IMAGES/vendor.img` SHA-256:
+  `61392fe8b4a4c302b7615f2ca9bc0e531f024720d2cf146d83dac5ff540f171f`
+- Final target-files `IMAGES/system.img` SHA-256:
+  `599e6bf6b2ae2feaf776ff95806ff611a635787eb966fe56ab88680cefd8279e`
+- The `boot.img` inside the final ROM ZIP matches
+  `out/target/product/nx549j/boot.img`.
+- Kernel payload check:
+  `out/target/product/nx549j/kernel` matches
+  `out/target/product/nx549j/obj/KERNEL_OBJ/arch/arm64/boot/Image.gz-dtb`
+  with SHA-256
+  `b3322c9fb39083cb683e14b7c75e3d20103002f574f5861f00f4e84a1f84379d`.
+- DTB verification:
+  `msm8953-mtp-nx549j.dtb` decompiles with
+  `qcom,batt-id-kohm = <0x1cc>` and
+  `qcom,battery-type = "ztemt_lg_3000mah"`.
+- OTA packaging ran `checkvintf --check-compat` and got `COMPATIBLE`.
+- `sha256sum -c SHA256SUMS` passes in the preserved attempt161 release
+  directory.
+
+Current interpretation:
+- attempt161 is the latest built full ROM artifact and includes the
+  source-level battery profile fix verified at runtime by attempt159.
+- The full ROM ZIP has not yet been runtime-flashed/boot-verified as a full
+  system install. The latest runtime-confirmed boot image remains attempt159.
+
+Build command:
+- `source build/envsetup.sh`
+- `lunch lineage_nx549j-userdebug`
+- `m bacon -j2`
 
 ## 2026-06-07 attempt159 confirmed boot and ZTEMT batterydata
 
