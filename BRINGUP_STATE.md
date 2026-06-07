@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T12:53:25-05:00
+Last updated: 2026-06-07T12:57:43-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `2b7a2ad8739928b76fc53fb0b7b5e860976d16f689baed8b22037417ac4079a5`
+    `f122e08df2cb2c9d13b3fc5fc1de700a6ad3a765bd9835e698f82e21988b362a`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -69,6 +69,10 @@ Static release evidence:
 - `PREFLASH_SIGNATURE_COMPARISON.md` compares the currently running old system
   against attempt165 and records that old dpmd was labeled `system_file` while
   attempt165 labels `/system/bin/dpmd` as `vendor_dpmd_exec`.
+  Updated SHA-256:
+  `6360f2c53c29cbdcd31d1263c406a9073c001cae6b579b0e5773cd995466f801`.
+  The report now also references the fixed capture and records targeted service
+  state, battery sysfs, old binary labels, and old VINTF snippets.
 - `ATTEMPT165_FLASH_ROLLBACK_RUNBOOK.md` records the no-wipe flash command,
   postflash capture path, incomplete-ADB behavior, and rollback command.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
