@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T09:01:09-05:00
+Last updated: 2026-06-07T09:09:45-05:00
 
 ## Objective
 
@@ -38,6 +38,16 @@ Patch category: PROPER-FIX / PACKAGING-FIX.
 
 Facts:
 - Full `m bacon -j2` completed successfully in the LineageOS 18.1 ROM tree.
+- Source/packaging commits published to GitHub after this build:
+  - kernel repo `nomorecoolnicknames/android_kernel_nubia_msm8953`,
+    branch `nx549j-port-4.9`, build-state commit
+    `ecd3185db docs: record nx549j attempt161 rom build`.
+  - device repo `nomorecoolnicknames/android_device_nubia_nx549j`,
+    branch `lineage-18.1`, packaging commit
+    `6134e3f nx549j: align recovery system-root property`.
+  - common repo `nomorecoolnicknames/android_device_nubia_msm8953-common`,
+    branch `lineage-18.1-xiaomi-tissot-base`, packaging commit
+    `380adbc msm8953-common: expose system mount in recovery fstab`.
 - Attempt160 failed only at final OTA packaging:
   `ota_from_target_files.py` raised `KeyError: '/system'`.
 - Root cause:
