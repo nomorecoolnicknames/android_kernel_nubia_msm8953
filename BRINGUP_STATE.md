@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T15:40:00-05:00
+Last updated: 2026-06-07T16:10:00-05:00
 
 ## Objective
 
@@ -9,6 +9,59 @@ diagnosable state. The current priority is to recover an automatic reboot/reset
 signal from the target 4.9 kernel, then use that signal to bracket how far
 early boot gets before returning to pstore/ramoops or another recovery-readable
 persistence path.
+
+## 2026-06-07 attempt168 full ROM boot verified
+
+Patch category: FULL-ROM / BOOT-UNBLOCK / RUNTIME-VERIFIED.
+
+Facts:
+- The full ROM was rebuilt after the `da266e3f5` kernel rollback and the
+  ZTEMT battery profile remained selected.
+- Build:
+  `BUILD_NUMBER=nx549j_attempt168_20260607_1542 m bacon -j2`.
+- Build log:
+  `/srv/forge/work/nx549j-preserve/build_logs/attempt168_full_rom_revert_da266_working_kernel_20260607_1542.log`.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt168-20260607-full-rom-working-kernel-revert-da266/`.
+- Key SHA-256:
+  - `boot.img`:
+    `f682c90ce00f2726d12a651beeacca9fa7a83492eb96484e9ec3fc1e63eb3208`
+  - `fastboot-system.img`:
+    `8d6f647a38e834ff695ddfcc66158e647e49302c4ff406f260a729fcea914f32`
+  - `fastboot-vendor.img`:
+    `21c759ab2aa07805ffecfb7b9dd8271399804d3fc4415b7e798ee7def8daddae`
+  - `kernel` / `Image.gz-dtb`:
+    `ae2742f4d45a925c32da557de04d4ff2422e8ee5a88a70dbd4ae2837f0ba88f2`
+  - `msm8953-mtp-nx549j.dtb`:
+    `7ab3e747ae0b8c24e0e0935ea02c4c1c79b4788f321121617d3b6163c2e6ab0f`
+- `boot.img` cmdline has no `frgmark.raw_wdt=1`; it keeps
+  `frgmark.recovery_timeout_sec=120 frgmark.bcb_misc_devt=179:28 initcall_debug`.
+- Generated kernel identity:
+  `4.9.227-perf+ #138 SMP PREEMPT Sun Jun 7 15:50:23 CDT 2026`.
+
+Runtime proof:
+- No-wipe fastboot flash wrote `boot`, `recovery`, `system`, and physical
+  `oem` for runtime `/vendor`; all writes returned `OKAY`.
+- Flash log:
+  `/srv/forge/work/nx549j-preserve/flash-runs/attempt168-full-rom-20260607_1604/fastboot.log`.
+- Runtime capture:
+  `/srv/forge/work/nx549j-preserve/captures/attempt168-full-rom-booted-20260607_1608/`.
+- Phone reached Android:
+  `sys.boot_completed=1`, `init.svc.bootanim=stopped`,
+  `service.bootanim.exit=1`.
+- Runtime build identity:
+  `ro.system.build.version.incremental=nx549j_attempt168_20260607_1542`,
+  `ro.vendor.build.version.incremental=nx549j_attempt168_20260607_1542`.
+- Runtime kernel:
+  `Linux localhost 4.9.227-perf+ #138 SMP PREEMPT Sun Jun 7 15:50:23 CDT 2026 aarch64`.
+- Battery profile:
+  `bms/battery_type=ztemt_lg_3000mah`, `bms/resistance_id=460600`.
+
+Conclusion:
+- The restored kernel is source-backed and works in a full ROM, not only as a
+  boot-only hybrid.
+- Keep `da266e3f5` reverted. Reintroduce any useful hardware changes from that
+  checkpoint one by one with boot validation after each flash.
 
 ## 2026-06-07 attempt167 source-built boot restored
 
