@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:31:56-05:00
+Last updated: 2026-06-07T13:56:31-05:00
 
 ## Objective
 
@@ -9,6 +9,72 @@ diagnosable state. The current priority is to recover an automatic reboot/reset
 signal from the target 4.9 kernel, then use that signal to bracket how far
 early boot gets before returning to pstore/ramoops or another recovery-readable
 persistence path.
+
+## 2026-06-07 attempt165 flash result / old TWRP recovery rescue
+
+Patch category: BOOT-UNBLOCK / RECOVERY-RESCUE.
+
+Facts:
+- attempt165 was flashed with the no-wipe fastboot runner:
+  `/srv/forge/work/nx549j-preserve/release-attempt165-20260607-clean-source-full-rom-dpmd-rootfc-ztemt-battid460/run-attempt165-nowipe-and-capture.sh --write-partitions`
+- Flash run directory:
+  `/srv/forge/work/nx549j-preserve/flash-runs/attempt165-20260607_133853`
+- Flash transcript:
+  `/srv/forge/work/nx549j-preserve/flash-runs/attempt165-20260607_133853/transcript.log`
+- Fastboot product guard passed as `product=MSM8953`.
+- Written partitions, all `OKAY`:
+  - `boot` from `boot.img`
+  - `recovery` from attempt165 Lineage recovery
+  - `system` from `fastboot-system.img`
+  - `oem` from `fastboot-vendor.img`
+- User-visible result after flash: bootloop/logo hang.
+- Postflash capture:
+  `/srv/forge/work/nx549j-preserve/captures/attempt165-postflash-20260607_134133`
+- Postflash capture verdict:
+  `INCOMPLETE_CAPTURE`; `adb wait-for-device timed out after 900s`.
+- This is not runtime proof of attempt165 userspace. Treat attempt165 as
+  flashed-but-not-booted until recovery/pstore/ramoops or a later ADB capture
+  proves more.
+- The user reported the flashed recovery is broken and requested the old TWRP
+  recovery repacked for the current layout.
+
+Old TWRP rescue image:
+- Rescue directory:
+  `/srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346`
+- Base old TWRP image:
+  `/srv/forge/work/nx549j-preserve/release-attempt53/twrp-3.2.1-ramoops-v4-4cell-reg.img`
+- Base old TWRP SHA-256:
+  `ff469b1be810389b61f95e16efbf5b6dca52e034fd541d41c586f10b80ae3e48`
+- Repacked output:
+  `/srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346/twrp-3.2.1-attempt165-layout-oem-vendor.img`
+- Repacked output SHA-256:
+  `7308ad08fe35039ac039317b76b29da2142e466ba99b0f0b5450a2ebf0aad0aa`
+- Repacked image size:
+  `17278976` bytes, below the recovery partition size `41943040`.
+- Repack details:
+  old TWRP kernel/header were kept, and both ramdisk fstab files were patched
+  to the current NX549J A-only layout where physical `oem` is mounted as
+  `/vendor`:
+  - `fstab.qcom`
+  - `etc/recovery.fstab`
+- Wait-and-flash helper:
+  `/srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346/flash-repacked-twrp-recovery.sh`
+- Helper SHA-256:
+  `783ac361a26e4cf090280dc3c8d21f19d8d0ad8c10ed04dffc45ec113a747587`
+- Helper validation:
+  `bash -n flash-repacked-twrp-recovery.sh` passed.
+- Current blocker at this note:
+  host USB does not see the phone as ADB or fastboot; `fastboot devices -l` is
+  empty, `adb devices -l` is empty, and `lsusb` does not list Nubia/ZTE.
+
+Next action:
+- Once `30785d1a` appears in fastboot, flash only recovery with:
+```sh
+cd /srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346
+./flash-repacked-twrp-recovery.sh --write-recovery
+```
+- Then collect TWRP/recovery logs and pstore/ramoops before making the next
+  boot patch.
 
 ## Source and Artifact Anchors
 
