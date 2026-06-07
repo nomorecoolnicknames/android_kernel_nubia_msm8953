@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:02:36-05:00
+Last updated: 2026-06-07T13:07:25-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `9b2dd724e60d797129b68a6fe7f83294a82d5567ae7ead0fb98e7ca513c64661`
+    `a734ddb58256d40b14b7ffb1264f5b7deeb2e1ca88594d00d6b4693849e78fca`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -86,7 +86,13 @@ Static release evidence:
   the release `SHA256SUMS` as `release_SHA256SUMS`, and writes
   `run_identity.env` with run date, serial, release dir, helper hashes, and the
   release checksum manifest hash before writing partitions. SHA-256:
-  `e52d269b7db49481a333e9a06b86d69d46e1ac12c83e7be8dad325d2513fcec3`.
+  `cd9bc7ca83f2f2207179c8302838b45f4a806c37f94a3bafc8cba11cbc6d7040`.
+- `summarize-attempt165-analysis.sh` converts a postflash capture analysis into
+  compact run verdict fields such as `WRONG_BUILD_OR_PREFLASH_CAPTURE`,
+  `INCOMPLETE_CAPTURE`, or `ATTEMPT165_RUNTIME_BLOCKERS`. SHA-256:
+  `cddc1396c4defd1a3b7d26c16d896cb441973bd5c63644565cc6e17d6e84265a`.
+- The run helper now writes `run_verdict.txt` into each flash-run directory and
+  embeds it in `run_summary.txt` after postflash capture.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
