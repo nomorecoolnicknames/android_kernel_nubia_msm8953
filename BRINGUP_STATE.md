@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:56:31-05:00
+Last updated: 2026-06-07T14:01:44-05:00
 
 ## Objective
 
@@ -63,18 +63,26 @@ Old TWRP rescue image:
   `783ac361a26e4cf090280dc3c8d21f19d8d0ad8c10ed04dffc45ec113a747587`
 - Helper validation:
   `bash -n flash-repacked-twrp-recovery.sh` passed.
+- Rescue recovery flash log:
+  `/srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346/flash-repacked-twrp-recovery-20260607_1358.log`
+- Rescue recovery flash log SHA-256:
+  `43be44adeac7ec606ddfc217a31089fdbfb490bb73a8fb277f9e1939e94800ce`
+- Rescue recovery flash result:
+  `fastboot product=MSM8953`, `fastboot flash recovery` returned `OKAY`, and
+  `fastboot reboot recovery` returned `OKAY`.
+- Userdata was not wiped.
 - Current blocker at this note:
-  host USB does not see the phone as ADB or fastboot; `fastboot devices -l` is
-  empty, `adb devices -l` is empty, and `lsusb` does not list Nubia/ZTE.
+  after `fastboot reboot recovery`, host USB does not see the phone as ADB or
+  fastboot; `fastboot devices -l` is empty, `adb devices -l` is empty, and
+  `lsusb` does not list Nubia/ZTE.
 
 Next action:
-- Once `30785d1a` appears in fastboot, flash only recovery with:
-```sh
-cd /srv/forge/work/nx549j-preserve/recovery-rescue-twrp-attempt165-20260607_1346
-./flash-repacked-twrp-recovery.sh --write-recovery
-```
-- Then collect TWRP/recovery logs and pstore/ramoops before making the next
-  boot patch.
+- Confirm visually whether TWRP appears on the phone screen.
+- If TWRP is visible but ADB is absent, use hardware/UI storage access or
+  re-enter fastboot and retry recovery boot/capture.
+- If TWRP is not visible and fastboot returns, keep recovery-only flashing to
+  known-good TWRP variants; do not rewrite system/oem until recovery evidence
+  is available.
 
 ## Source and Artifact Anchors
 
