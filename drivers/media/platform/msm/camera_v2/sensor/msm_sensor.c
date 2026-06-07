@@ -186,6 +186,14 @@ int msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 
 	CDBG("Sensor %d tagged as %s\n", s_ctrl->id,
 		(s_ctrl->is_secure)?"SECURE":"NON-SECURE");
+	pr_err("NX549J-CAM-POWER %s start id=%d devtype=%d slave=0x%x id_reg=0x%x expected=0x%x mask=0x%x pwr=%u pwr_down=%u vreg=%d clk=%zu secure=%d\n",
+		sensor_name, s_ctrl->id, s_ctrl->sensor_device_type,
+		slave_info->sensor_slave_addr, slave_info->sensor_id_reg_addr,
+		slave_info->sensor_id, slave_info->sensor_id_mask,
+		power_info->power_setting_size,
+		power_info->power_down_setting_size,
+		power_info->num_vreg, power_info->clk_info_size,
+		s_ctrl->is_secure);
 
 	for (retry = 0; retry < 3; retry++) {
 		if (s_ctrl->is_secure) {
@@ -208,21 +216,36 @@ int msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 #if IS_ENABLED(CONFIG_ARCH_QM215)
 		msleep(60);
 #endif
+		pr_err("NX549J-CAM-POWER %s retry=%u msm_camera_power_up begin\n",
+			sensor_name, retry);
 		rc = msm_camera_power_up(power_info, s_ctrl->sensor_device_type,
 			sensor_i2c_client);
-		if (rc < 0)
+		if (rc < 0) {
+			pr_err("NX549J-CAM-POWER %s retry=%u msm_camera_power_up fail rc=%d\n",
+				sensor_name, retry, rc);
 			return rc;
+		}
+		pr_err("NX549J-CAM-POWER %s retry=%u msm_camera_power_up ok\n",
+			sensor_name, retry);
+		pr_err("NX549J-CAM-POWER %s retry=%u msm_sensor_check_id begin\n",
+			sensor_name, retry);
 		rc = msm_sensor_check_id(s_ctrl);
 		if (rc < 0) {
+			pr_err("NX549J-CAM-POWER %s retry=%u msm_sensor_check_id fail rc=%d\n",
+				sensor_name, retry, rc);
 			msm_camera_power_down(power_info,
 				s_ctrl->sensor_device_type, sensor_i2c_client);
 			msleep(20);
 			continue;
 		} else {
+			pr_err("NX549J-CAM-POWER %s retry=%u msm_sensor_check_id ok\n",
+				sensor_name, retry);
 			break;
 		}
 	}
 
+	pr_err("NX549J-CAM-POWER %s done rc=%d retries=%u\n",
+		sensor_name, rc, retry);
 	return rc;
 }
 
@@ -249,6 +272,7 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int rc = 0;
 	uint16_t chipid = 0;
+	uint16_t masked_id = 0;
 	struct msm_camera_i2c_client *sensor_i2c_client;
 	struct msm_camera_slave_info *slave_info;
 	const char *sensor_name;
@@ -280,6 +304,12 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		return -EINVAL;
 	}
 
+	pr_err("NX549J-CAM-POWER %s match_id start slave=0x%x id_reg=0x%x expected=0x%x mask=0x%x preinit_writes=%u\n",
+		sensor_name, slave_info->sensor_slave_addr,
+		slave_info->sensor_id_reg_addr, slave_info->sensor_id,
+		slave_info->sensor_id_mask,
+		slave_info->setting ? slave_info->setting->size : 0);
+
 	if (slave_info->setting && slave_info->setting->size > 0) {
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
 			i2c_write_table(s_ctrl->sensor_i2c_client,
@@ -295,13 +325,22 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		sensor_i2c_client, slave_info->sensor_id_reg_addr,
 		&chipid, MSM_CAMERA_I2C_WORD_DATA);
 	if (rc < 0) {
+		pr_err("NX549J-CAM-POWER %s read_id fail rc=%d slave=0x%x reg=0x%x expected=0x%x mask=0x%x\n",
+			sensor_name, rc, slave_info->sensor_slave_addr,
+			slave_info->sensor_id_reg_addr, slave_info->sensor_id,
+			slave_info->sensor_id_mask);
 		pr_err("%s: %s: read id failed\n", __func__, sensor_name);
 		return rc;
 	}
 
+	masked_id = msm_sensor_id_by_mask(s_ctrl, chipid);
+	pr_err("NX549J-CAM-POWER %s read_id chip=0x%x masked=0x%x expected=0x%x mask=0x%x slave=0x%x reg=0x%x\n",
+		sensor_name, chipid, masked_id, slave_info->sensor_id,
+		slave_info->sensor_id_mask, slave_info->sensor_slave_addr,
+		slave_info->sensor_id_reg_addr);
 	pr_debug("%s: read id: 0x%x expected id 0x%x:\n",
 			__func__, chipid, slave_info->sensor_id);
-	if (msm_sensor_id_by_mask(s_ctrl, chipid) != slave_info->sensor_id) {
+	if (masked_id != slave_info->sensor_id) {
 		pr_err("%s chip id %x does not match %x\n",
 				__func__, chipid, slave_info->sensor_id);
 		return -ENODEV;

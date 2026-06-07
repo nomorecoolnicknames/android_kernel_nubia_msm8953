@@ -17,10 +17,11 @@
 #include "pmi8950.dtsi"
 #include "msm8953-pmi8950.dtsi"
 #include "msm8953-mtp.dtsi"
-#include "msm8953-camera-sensor-mtp.dtsi"
+#include "nx549j/msm8953-camera-sensor-nx549j.dtsi"
 #include "msm8953-mdss-panels-nx549j.dtsi"
 #include "msm8953-pinctrl-nx549j.dtsi"
 #include "nx549j/msm8953-nubia-common-nx549j.dtsi"
+#include "nx549j/msm8953-audio-nx549j.dtsi"
 
 /* Ramoops region (1 MiB) for pstore crash diagnostics. */
 /{

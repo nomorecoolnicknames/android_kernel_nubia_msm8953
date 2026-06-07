@@ -2232,6 +2232,8 @@
 
 	ssc_sensors: qcom,msm-ssc-sensors {
 		compatible = "qcom,msm-ssc-sensors";
+		qcom,subsys-name = "adsp";
+		qcom,firmware-name = "adsp";
 		status = "ok";
 	};
 

@@ -19,6 +19,7 @@
 #include <linux/proc_fs.h>
 #include <linux/nx549j_splashprobe.h>
 #include <linux/reboot.h>
+#include <linux/string.h>
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <soc/qcom/watchdog.h>
@@ -61,6 +62,8 @@
 #define FRG_RECOVERY_TIMEOUT_ARTIFACT "nx549j-frgmark-recovery-timeout"
 #define FRG_RECOVERY_SELECTOR_REFRESH_SEC 5U
 #define FRG_RECOVERY_BCB_RETRY_SEC 5U
+#define FRG_RECOVERY_USERSPACE_TIMEOUT_SEC 120U
+#define FRG_RECOVERY_BOOT_COMPLETED_ACK "boot-completed"
 #define FRG_PANIC_REBOOT_SEC 5
 
 #ifndef FRGMARK_FORCE_PANIC_STAGE
@@ -78,6 +81,7 @@ static struct delayed_work frg_recovery_selector_work;
 static struct timer_list frg_recovery_timeout_timer;
 static unsigned int frg_heartbeat_count;
 static unsigned int frg_recovery_timeout_sec;
+static unsigned int frg_recovery_timeout_active_sec;
 static u8 frg_force_panic_stage = FRGMARK_FORCE_PANIC_STAGE;
 static u8 frg_force_reset_stage;
 static bool frg_force_panic_armed = FRGMARK_FORCE_PANIC_STAGE != 0;
@@ -110,6 +114,9 @@ static void frgmark_arm_early_recovery_guard(const char *reason);
 static int frgmark_write_recovery_bcb(const char *reason);
 static int frgmark_clear_recovery_bcb(const char *reason);
 static void frgmark_userspace_ack(const char *reason);
+static void frgmark_reschedule_recovery_timeout(unsigned int seconds,
+						const char *reason);
+static bool frgmark_userspace_ack_allowed(const char *reason);
 
 static const char *frgmark_stage_name(u8 stage)
 {
@@ -379,6 +386,7 @@ static int __init frgmark_recovery_timeout_setup(char *str)
 	}
 
 	frg_recovery_timeout_sec = (unsigned int)value;
+	frg_recovery_timeout_active_sec = frg_recovery_timeout_sec;
 	frg_recovery_timeout_armed = true;
 	pr_emerg("FRGmark: recovery timeout armed seconds=%u panic_reboot_waits_for_bcb=1 artifact=%s\n",
 		 frg_recovery_timeout_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
@@ -399,6 +407,8 @@ static int __init frgmark_raw_wdt_setup(char *str)
 	pr_emerg("FRGmark: raw WDT %s artifact=%s\n",
 		 frg_raw_wdt_enabled ? "enabled" : "disabled",
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+	if (frg_raw_wdt_enabled)
+		frgmark_arm_early_recovery_guard("raw-wdt-param");
 	return 0;
 }
 early_param("frgmark.raw_wdt", frgmark_raw_wdt_setup);
@@ -556,6 +566,29 @@ static void frgmark_program_early_wdt(unsigned int seconds)
 	iounmap(wdt);
 	pr_emerg("FRGmark: early raw WDT armed seconds=%u bark=0x%lx bite=0x%lx artifact=%s\n",
 		 seconds, bark_ticks, bite_ticks, FRG_RECOVERY_TIMEOUT_ARTIFACT);
+}
+
+static void frgmark_disable_early_wdt(const char *reason)
+{
+	void __iomem *wdt;
+
+	if (!frg_early_wdt_programmed)
+		return;
+
+	wdt = ioremap(FRG_WDT_PA, FRG_WDT_LEN);
+	if (!wdt) {
+		pr_emerg("FRGmark: early WDT disable ioremap(0x%lx) failed reason=%s artifact=%s\n",
+			 FRG_WDT_PA, reason ? reason : "unknown",
+			 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+		return;
+	}
+
+	__raw_writel(0, wdt + FRG_WDT_EN);
+	mb();
+	iounmap(wdt);
+	frg_early_wdt_programmed = false;
+	pr_emerg("FRGmark: early raw WDT disabled reason=%s artifact=%s\n",
+		 reason ? reason : "unknown", FRG_RECOVERY_TIMEOUT_ARTIFACT);
 }
 
 static void frgmark_enable_recovery_panic_reboot(const char *reason)
@@ -914,7 +947,7 @@ static void frgmark_recovery_timeout_fire(struct work_struct *work)
 	frgmark_prime_recovery_selectors("timeout");
 	frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_TIMEOUT_REBOOT);
 	pr_emerg("FRGmark: recovery timeout firing seconds=%u artifact=%s\n",
-		 frg_recovery_timeout_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
+		 frg_recovery_timeout_active_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
 	kmsg_dump(KMSG_DUMP_PANIC);
 	kernel_restart("recovery");
 	pr_emerg("FRGmark: kernel_restart(\"recovery\") returned, forcing watchdog bite artifact=%s\n",
@@ -937,7 +970,7 @@ static void frgmark_recovery_timeout_timer_fire(unsigned long data)
 
 	frgmark_prime_recovery_imem("timer-timeout");
 	pr_emerg("FRGmark: recovery timer firing seconds=%u bcb_written=%d artifact=%s\n",
-		 frg_recovery_timeout_sec, frg_recovery_bcb_written,
+		 frg_recovery_timeout_active_sec, frg_recovery_bcb_written,
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 	if (!frg_recovery_bcb_written) {
 		frgmark_timeout_marker(FRGMARK_STAGE_RECOVERY_NO_BCB_GRACE);
@@ -1035,6 +1068,8 @@ void __init frgmark_recovery_timeout_arm(void)
 	if (!frg_recovery_timeout_armed || frg_recovery_timeout_work_armed)
 		return;
 
+	if (!frg_recovery_timeout_active_sec)
+		frg_recovery_timeout_active_sec = frg_recovery_timeout_sec;
 	frgmark_register_panic_notifier();
 	frgmark_prime_recovery_selectors("arm");
 	INIT_DELAYED_WORK(&frg_recovery_bcb_work, frgmark_recovery_bcb_retry);
@@ -1046,7 +1081,7 @@ void __init frgmark_recovery_timeout_arm(void)
 		setup_timer(&frg_recovery_timeout_timer,
 			    frgmark_recovery_timeout_timer_fire, 0);
 		mod_timer(&frg_recovery_timeout_timer,
-			  jiffies + frg_recovery_timeout_sec * HZ);
+			  jiffies + frg_recovery_timeout_active_sec * HZ);
 		frg_recovery_timeout_timer_armed = true;
 		pr_emerg("FRGmark: recovery timer armed seconds=%u artifact=%s\n",
 			 frg_recovery_timeout_sec,
@@ -1055,10 +1090,28 @@ void __init frgmark_recovery_timeout_arm(void)
 	schedule_delayed_work(&frg_recovery_selector_work,
 			      FRG_RECOVERY_SELECTOR_REFRESH_SEC * HZ);
 	schedule_delayed_work(&frg_recovery_timeout_work,
-			      frg_recovery_timeout_sec * HZ);
+			      frg_recovery_timeout_active_sec * HZ);
 	frg_recovery_timeout_work_armed = true;
 	pr_emerg("FRGmark: recovery timeout work armed seconds=%u artifact=%s\n",
-		 frg_recovery_timeout_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
+		 frg_recovery_timeout_active_sec, FRG_RECOVERY_TIMEOUT_ARTIFACT);
+}
+
+static void frgmark_reschedule_recovery_timeout(unsigned int seconds,
+						const char *reason)
+{
+	if (!frg_recovery_timeout_armed || frg_recovery_userspace_done ||
+	    frg_recovery_timeout_done)
+		return;
+
+	frg_recovery_timeout_active_sec = seconds;
+	if (frg_recovery_timeout_timer_armed)
+		mod_timer(&frg_recovery_timeout_timer, jiffies + seconds * HZ);
+	if (frg_recovery_timeout_work_armed)
+		mod_delayed_work(system_wq, &frg_recovery_timeout_work,
+				 seconds * HZ);
+	pr_emerg("FRGmark: recovery timeout rescheduled reason=%s seconds=%u artifact=%s\n",
+		 reason ? reason : "unknown", seconds,
+		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
 }
 
 void frgmark_userspace_reached(void)
@@ -1068,15 +1121,20 @@ void frgmark_userspace_reached(void)
 
 	frg_recovery_userspace_exec_seen = true;
 	frgmark(FRGMARK_STAGE_USERSPACE_REACHED);
-	pr_emerg("FRGmark: userspace exec reached, auto-acking recovery timeout artifact=%s\n",
+	frgmark_reschedule_recovery_timeout(FRG_RECOVERY_USERSPACE_TIMEOUT_SEC,
+					    "userspace-reached");
+	pr_emerg("FRGmark: userspace exec reached, waiting for explicit ack late_timeout=%u artifact=%s\n",
+		 FRG_RECOVERY_USERSPACE_TIMEOUT_SEC,
 		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
-	frgmark_userspace_ack("userspace-reached");
 }
 EXPORT_SYMBOL(frgmark_userspace_reached);
 
 static void frgmark_userspace_ack(const char *reason)
 {
 	if (frg_recovery_userspace_done)
+		return;
+
+	if (!frgmark_userspace_ack_allowed(reason))
 		return;
 
 	frg_recovery_userspace_done = true;
@@ -1090,10 +1148,22 @@ static void frgmark_userspace_ack(const char *reason)
 	if (frg_recovery_bcb_work_armed)
 		cancel_delayed_work_sync(&frg_recovery_bcb_work);
 	cancel_delayed_work_sync(&frg_recovery_timeout_work);
+	frgmark_disable_early_wdt("userspace-ack");
 	frgmark_clear_recovery_bcb("userspace-ack");
 	frgmark_clear_recovery_selectors("userspace-ack");
 	pr_emerg("FRGmark: userspace ack reason=%s, recovery timeout disarmed artifact=%s\n",
 		 reason ? reason : "unknown", FRG_RECOVERY_TIMEOUT_ARTIFACT);
+}
+
+static bool frgmark_userspace_ack_allowed(const char *reason)
+{
+	if (reason && !strcmp(reason, FRG_RECOVERY_BOOT_COMPLETED_ACK))
+		return true;
+
+	pr_emerg("FRGmark: userspace ack ignored reason=%s waiting_for=%s artifact=%s\n",
+		 reason ? reason : "unknown", FRG_RECOVERY_BOOT_COMPLETED_ACK,
+		 FRG_RECOVERY_TIMEOUT_ARTIFACT);
+	return false;
 }
 
 static ssize_t frgmark_userspace_ack_write(struct file *file,
@@ -1114,7 +1184,7 @@ static ssize_t frgmark_userspace_ack_write(struct file *file,
 	if (rc < 0)
 		return rc;
 	buf[rc] = '\0';
-	frgmark_userspace_ack(buf);
+	frgmark_userspace_ack(strim(buf));
 	return rc;
 }
 

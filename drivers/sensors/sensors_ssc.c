@@ -85,22 +85,16 @@ static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 	struct slpi_loader_private *priv = NULL;
 	int ret;
 	const char *firmware_name = NULL;
+	const char *subsys_name = "slpi";
 
 	if (!pdev) {
-		dev_err(&pdev->dev, "%s: Platform device null\n", __func__);
+		pr_err("%s: Platform device null\n", __func__);
 		goto fail;
 	}
 
 	if (!pdev->dev.of_node) {
 		dev_err(&pdev->dev,
 			"%s: Device tree information missing\n", __func__);
-		goto fail;
-	}
-
-	ret = of_property_read_string(pdev->dev.of_node,
-		"qcom,firmware-name", &firmware_name);
-	if (ret < 0) {
-		pr_err("can't get fw name.\n");
 		goto fail;
 	}
 
@@ -111,14 +105,33 @@ static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 		goto fail;
 	}
 
-	priv->pil_h = subsystem_get_with_fwname("slpi", firmware_name);
+	ret = of_property_read_string(pdev->dev.of_node,
+		"qcom,subsys-name", &subsys_name);
+	if (ret < 0 && ret != -EINVAL)
+		dev_warn(&pdev->dev, "%s: invalid qcom,subsys-name %d\n",
+			__func__, ret);
+
+	ret = of_property_read_string(pdev->dev.of_node,
+		"qcom,firmware-name", &firmware_name);
+	if (ret < 0) {
+		dev_info(&pdev->dev, "%s: loading subsystem %s\n",
+			__func__, subsys_name);
+		priv->pil_h = subsystem_get(subsys_name);
+	} else {
+		dev_info(&pdev->dev, "%s: loading subsystem %s fw %s\n",
+			__func__, subsys_name, firmware_name);
+		priv->pil_h = subsystem_get_with_fwname(subsys_name,
+			firmware_name);
+	}
+
 	if (IS_ERR(priv->pil_h)) {
-		dev_err(&pdev->dev, "%s: pil get failed,\n",
-			__func__);
+		dev_err(&pdev->dev, "%s: pil get failed for %s (%ld)\n",
+			__func__, subsys_name, PTR_ERR(priv->pil_h));
 		goto fail;
 	}
 
-	dev_dbg(&pdev->dev, "%s: SLPI image is loaded\n", __func__);
+	dev_info(&pdev->dev, "%s: subsystem %s image is loaded\n",
+		__func__, subsys_name);
 	return;
 
 fail:

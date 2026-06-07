@@ -864,6 +864,17 @@ int32_t msm_sensor_driver_probe(void *setting,
 	}
 
 	/* Print slave info */
+	pr_err("NX549J-CAM-PROBE enter camera=%d sensor=%s eeprom=%s actuator=%s flash=%s ois=%s slave=0x%X id_reg=0x%X id=0x%X mask=0x%X pwr=%d/%d bypass=%d",
+		slave_info->camera_id, slave_info->sensor_name,
+		slave_info->eeprom_name, slave_info->actuator_name,
+		slave_info->flash_name, slave_info->ois_name,
+		slave_info->slave_addr,
+		slave_info->sensor_id_info.sensor_id_reg_addr,
+		slave_info->sensor_id_info.sensor_id,
+		slave_info->sensor_id_info.sensor_id_mask,
+		slave_info->power_setting_array.size,
+		slave_info->power_setting_array.size_down,
+		slave_info->bypass_video_node_creation);
 	CDBG("camera id %d Slave addr 0x%X addr_type %d\n",
 		slave_info->camera_id, slave_info->slave_addr,
 		slave_info->addr_type);
@@ -891,7 +902,7 @@ int32_t msm_sensor_driver_probe(void *setting,
 	/* Extract s_ctrl from camera id */
 	s_ctrl = g_sctrl[slave_info->camera_id];
 	if (!s_ctrl) {
-		pr_err("failed: s_ctrl %pK for camera_id %d", s_ctrl,
+		pr_err("NX549J-CAM-PROBE failed: s_ctrl %pK for camera_id %d", s_ctrl,
 			slave_info->camera_id);
 		rc = -EINVAL;
 		goto free_slave_info;
@@ -944,9 +955,15 @@ int32_t msm_sensor_driver_probe(void *setting,
 	rc = msm_sensor_get_power_settings(setting, slave_info,
 		&s_ctrl->sensordata->power_info);
 	if (rc < 0) {
-		pr_err("failed");
+		pr_err("NX549J-CAM-PROBE %s get_power_settings failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_slave_info;
 	}
+	pr_err("NX549J-CAM-PROBE %s power_settings ok num_vreg=%d power=%d down=%d",
+		slave_info->sensor_name,
+		s_ctrl->sensordata->power_info.num_vreg,
+		s_ctrl->sensordata->power_info.power_setting_size,
+		s_ctrl->sensordata->power_info.power_down_setting_size);
 
 
 	camera_info = kzalloc(sizeof(struct msm_camera_slave_info), GFP_KERNEL);
@@ -994,8 +1011,9 @@ int32_t msm_sensor_driver_probe(void *setting,
 		s_ctrl->sensordata->power_info.power_setting,
 		s_ctrl->sensordata->power_info.power_setting_size);
 	if (rc < 0) {
-		pr_err("failed: msm_camera_get_dt_power_setting_data rc %d",
-			rc);
+		pr_err("NX549J-CAM-PROBE %s fill_vreg_power failed rc=%d num_vreg=%d",
+			slave_info->sensor_name, rc,
+			s_ctrl->sensordata->power_info.num_vreg);
 		goto free_camera_info;
 	}
 
@@ -1006,8 +1024,9 @@ int32_t msm_sensor_driver_probe(void *setting,
 		s_ctrl->sensordata->power_info.power_down_setting,
 		s_ctrl->sensordata->power_info.power_down_setting_size);
 	if (rc < 0) {
-		pr_err("failed: msm_camera_fill_vreg_params for PDOWN rc %d",
-			rc);
+		pr_err("NX549J-CAM-PROBE %s fill_vreg_power_down failed rc=%d num_vreg=%d",
+			slave_info->sensor_name, rc,
+			s_ctrl->sensordata->power_info.num_vreg);
 		goto free_camera_info;
 	}
 
@@ -1025,43 +1044,58 @@ CSID_TG:
 	 */
 	rc = msm_sensor_fill_eeprom_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
+		pr_err("NX549J-CAM-PROBE %s fill_eeprom failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
+	pr_err("NX549J-CAM-PROBE %s fill_eeprom ok subdev=%d",
+		slave_info->sensor_name,
+		s_ctrl->sensordata->sensor_info->subdev_id[SUB_MODULE_EEPROM]);
 	/*
 	 * Update actuator subdevice Id by input actuator name
 	 */
 	rc = msm_sensor_fill_actuator_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
+		pr_err("NX549J-CAM-PROBE %s fill_actuator failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
+	pr_err("NX549J-CAM-PROBE %s fill_actuator ok subdev=%d",
+		slave_info->sensor_name,
+		s_ctrl->sensordata->sensor_info->subdev_id[SUB_MODULE_ACTUATOR]);
 	rc = msm_sensor_fill_laser_led_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
+		pr_err("NX549J-CAM-PROBE %s fill_laser failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
 
 	rc = msm_sensor_fill_ois_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
+		pr_err("NX549J-CAM-PROBE %s fill_ois failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
 
 	rc = msm_sensor_fill_flash_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
+		pr_err("NX549J-CAM-PROBE %s fill_flash failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
+	pr_err("NX549J-CAM-PROBE %s fill_flash ok subdev=%d",
+		slave_info->sensor_name,
+		s_ctrl->sensordata->sensor_info->subdev_id[SUB_MODULE_LED_FLASH]);
 
 	/* Power up and probe sensor */
 	rc = s_ctrl->func_tbl->sensor_power_up(s_ctrl);
 	if (rc < 0) {
-		pr_err("%s power up failed", slave_info->sensor_name);
+		pr_err("NX549J-CAM-PROBE %s power_up failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto free_camera_info;
 	}
 
-	pr_err("%s probe succeeded", slave_info->sensor_name);
+	pr_err("NX549J-CAM-PROBE %s probe succeeded", slave_info->sensor_name);
 
 	s_ctrl->bypass_video_node_creation =
 		slave_info->bypass_video_node_creation;
@@ -1076,7 +1110,8 @@ CSID_TG:
 	else
 		rc = msm_sensor_driver_create_i2c_v4l_subdev(s_ctrl);
 	if (rc < 0) {
-		pr_err("failed: camera creat v4l2 rc %d", rc);
+		pr_err("NX549J-CAM-PROBE %s create_v4l2 failed rc=%d",
+			slave_info->sensor_name, rc);
 		goto camera_power_down;
 	}
 
