@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T12:57:43-05:00
+Last updated: 2026-06-07T13:02:36-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `f122e08df2cb2c9d13b3fc5fc1de700a6ad3a765bd9835e698f82e21988b362a`
+    `9b2dd724e60d797129b68a6fe7f83294a82d5567ae7ead0fb98e7ca513c64661`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -75,6 +75,18 @@ Static release evidence:
   state, battery sysfs, old binary labels, and old VINTF snippets.
 - `ATTEMPT165_FLASH_ROLLBACK_RUNBOOK.md` records the no-wipe flash command,
   postflash capture path, incomplete-ADB behavior, and rollback command.
+  Updated SHA-256:
+  `0a364e92eee8b58e400ffd1936e270b596f98ac1010e4b0d1c16e974ffbfa30a`.
+- `attempt165-release.env` records machine-readable release identity,
+  immutable build-code refs, expected runtime identity, no-wipe policy, oem
+  vendor target, rollback dir, and key artifact SHA-256 values. SHA-256:
+  `84e6aaf5f6f4fccab5c5cbdbd77f41c85d8387b3c499766963c26afd9c8b52db`.
+- `run-attempt165-nowipe-and-capture.sh` now copies
+  `attempt165-release.env` to each flash-run as `release_identity.env`, copies
+  the release `SHA256SUMS` as `release_SHA256SUMS`, and writes
+  `run_identity.env` with run date, serial, release dir, helper hashes, and the
+  release checksum manifest hash before writing partitions. SHA-256:
+  `e52d269b7db49481a333e9a06b86d69d46e1ac12c83e7be8dad325d2513fcec3`.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
