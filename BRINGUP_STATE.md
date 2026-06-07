@@ -7674,3 +7674,50 @@ Final packaged artifact for this batch:
   `15038` had only `711HEBSR277K5` and `91HEBNL163XD`; `15031` had only
   `L91HVCNS22KS5`; `15034` and `15030` had no ADB devices. The watcher reported
   `TARGET_SERIAL_MISSING` / `NO_ADB_DEVICES` and did not write to any device.
+
+2026-06-07T19:35Z attempt165 boot-only restore and raw-WDT rollback:
+
+- Patch category: PROPER-FIX / BOOT-UNBLOCK rollback of a diagnostic knob.
+- User-visible result:
+  after restoring only the old known-good boot image, the phone booted Android
+  again. ADB sees serial `30785d1a` as `device`, not recovery, and
+  `sys.boot_completed=1`.
+- Current Android userspace identity after boot-only restore:
+  - `ro.lineage.version=18.1-20260607-UNOFFICIAL-nx549j`
+  - `ro.system.build.version.incremental=nx549j_attempt165_20260607_113349`
+  - `ro.vendor.build.version.incremental=nx549j_attempt165_20260607_113349`
+- Current kernel after boot-only restore:
+  `Linux localhost 4.9.227-perf+ #114 SMP PREEMPT Sun May 31 19:12:49 CDT
+  2026 aarch64`.
+- Current working boot cmdline contains
+  `frgmark.recovery_timeout_sec=120 frgmark.bcb_misc_devt=179:28
+  initcall_debug` and does not contain `frgmark.raw_wdt=1`.
+- Restore artifact:
+  `/srv/forge/work/nx549j-preserve/kernel-restore-attempt165-bootonly-20260607_1417/boot-working-pre-attempt164.android.img`
+  SHA-256 `f4b02a0d281da2d80be5428a3042a69b74bfe9a9b47f3523034cbf1e7ecca05a`.
+- Source evidence:
+  attempt165 `out/target/product/nx549j/boot.img` SHA-256 is
+  `db2024042a4805e732cb16dc8d0f9c8ac22310cba2f593854348822cf1f2baf4`
+  and its boot cmdline added `frgmark.raw_wdt=1`.
+- Verdict:
+  attempt165 system/oem userspace is bootable. The bootloop came from the
+  attempt165 boot image path, with `frgmark.raw_wdt=1` the only cmdline delta
+  versus the currently working boot and the highest-confidence immediate
+  trigger.
+- Source rollback:
+  removed `frgmark.raw_wdt=1` from
+  `device/nubia/nx549j/BoardConfig.mk`. The raw WDT kernel code remains
+  opt-in, but normal future ROM builds must not enable it by default.
+- Tracked source commit:
+  device repo `lineage-18.1` commit
+  `a2ddb101bca3cae08667a682dec4c8372a6914e8`
+  (`nx549j: disable raw watchdog boot flag`) pushed to
+  `origin/lineage-18.1`; push evidence `93d67b5..a2ddb10`.
+- Captures:
+  - Working Android capture:
+    `/srv/forge/work/nx549j-preserve/captures/attempt165-userspace-working-boot-restore-20260607_1420`
+  - TWRP v2 alive check:
+    `/srv/forge/work/nx549j-preserve/captures/twrp-rescue-alive-check-20260607_1415`
+- Next build rule:
+  attempt166 must be rebuilt from source with no `frgmark.raw_wdt=1` in the
+  unpacked boot cmdline before flashing any new full ROM.
