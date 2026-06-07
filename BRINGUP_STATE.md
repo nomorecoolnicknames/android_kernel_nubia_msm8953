@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T14:01:44-05:00
+Last updated: 2026-06-07T15:35:00-05:00
 
 ## Objective
 
@@ -9,6 +9,71 @@ diagnosable state. The current priority is to recover an automatic reboot/reset
 signal from the target 4.9 kernel, then use that signal to bracket how far
 early boot gets before returning to pstore/ramoops or another recovery-readable
 persistence path.
+
+## 2026-06-07 attempt167 source-built boot restored
+
+Patch category: BOOT-UNBLOCK / PROPER-FIX / RUNTIME-VERIFIED.
+
+Facts:
+- attempt165/attempt166 userspace was not the boot blocker: attempt165
+  system/oem booted Android when paired with the old pre-attempt164 boot.
+- attempt166 removed `frgmark.raw_wdt=1` from the boot cmdline, but its fresh
+  kernel still failed to reach Android and returned the phone to fastboot /
+  recovery. attempt166 `boot.img` SHA-256:
+  `033efed03f01ef57842e6b55bde875570aa6d56cbc21548d018fcef44dc10ab7`.
+- Hybrid proof:
+  `/srv/forge/work/nx549j-preserve/boot-hybrids-attempt166-20260607_1522/boot-oldkernel-newramdisk.img`
+  booted with `sys.boot_completed=1`, so the new ramdisk/init was not the
+  blocker.
+- The failing Image.gz-dtb was kernel `#136 Sun Jun 7 15:03:11 CDT 2026`.
+  The known-good baseline was kernel `#114 Sun May 31 19:12:49 CDT 2026`.
+- Root cause is commit
+  `da266e3f5 nx549j: checkpoint attempt163 hardware bringup`.
+  Its frgmark change stopped auto-acking the recovery timeout at
+  `userspace-reached` and waited for an explicit `boot-completed` ack that the
+  current userspace does not send.
+- The ZTEMT battery fix remains preserved from
+  `c3c8acb82 nx549j: match ztemt battery profile`.
+
+Applied source recovery:
+- Reverted `da266e3f561ec6c86a4c31d4a5209a790daf1a5e` on top of current
+  `nx549j-port-4.9`.
+- The revert restores frgmark auto-ack behavior, restores the 2.8-2.85 V L22 /
+  panel supply state, drops the attempt163 camera/audio DTS checkpoint, and
+  leaves `nx549j/batterydata-ztemt-4v4-3000mah.dtsi` selected with
+  `qcom,batt-id-kohm = <460>`.
+
+Validated artifact:
+- Build:
+  `BUILD_NUMBER=nx549j_attempt167_20260607_1525 m bootimage -j2`.
+- Build log:
+  `/srv/forge/work/nx549j-preserve/build_logs/attempt167_bootimage_revert_da266_keep_battery_20260607_1525.log`.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt167-20260607-boot-revert-da266-keep-ztemt-battery/`.
+- `boot.img` SHA-256:
+  `0dd882e2e3ffef10305901bdf5564b79fee1dc107494c5c15b114d242cc3c35d`.
+- Kernel version:
+  `Linux version 4.9.227-perf+ #137 SMP PREEMPT Sun Jun 7 15:29:01 CDT 2026`.
+- Boot cmdline includes
+  `frgmark.recovery_timeout_sec=120 frgmark.bcb_misc_devt=179:28 initcall_debug`
+  and does not include `frgmark.raw_wdt=1`.
+
+Runtime proof:
+- Flash run:
+  `/srv/forge/work/nx549j-preserve/flash-runs/attempt167-bootonly-revert-da266-20260607_1532`.
+- Capture:
+  `/srv/forge/work/nx549j-preserve/captures/attempt167-bootonly-revert-da266-20260607_1531`.
+- Phone reached Android ADB and `sys.boot_completed=1`.
+- Runtime kernel:
+  `Linux localhost 4.9.227-perf+ #137 SMP PREEMPT Sun Jun 7 15:29:01 CDT 2026 aarch64`.
+- Battery profile survived:
+  `bms/battery_type=ztemt_lg_3000mah`, `bms/resistance_id=460600`.
+
+Next action:
+- Commit and push this revert before any further kernel experiments.
+- Reintroduce any useful pieces from `da266e3f5` one by one with boot-only
+  validation; do not restore the explicit `boot-completed` frgmark ack behavior
+  unless userspace is patched to write it.
 
 ## 2026-06-07 attempt165 flash result / old TWRP recovery rescue
 
