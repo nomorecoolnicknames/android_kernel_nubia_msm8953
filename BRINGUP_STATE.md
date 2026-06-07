@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T15:35:00-05:00
+Last updated: 2026-06-07T15:40:00-05:00
 
 ## Objective
 
@@ -38,6 +38,10 @@ Facts:
 Applied source recovery:
 - Reverted `da266e3f561ec6c86a4c31d4a5209a790daf1a5e` on top of current
   `nx549j-port-4.9`.
+- Committed as:
+  `d6657fe65 nx549j: restore booting kernel`.
+- Pushed to GitHub:
+  `a2c9aea07..d6657fe65 nx549j-port-4.9 -> nx549j-port-4.9`.
 - The revert restores frgmark auto-ack behavior, restores the 2.8-2.85 V L22 /
   panel supply state, drops the attempt163 camera/audio DTS checkpoint, and
   leaves `nx549j/batterydata-ztemt-4v4-3000mah.dtsi` selected with
@@ -70,7 +74,6 @@ Runtime proof:
   `bms/battery_type=ztemt_lg_3000mah`, `bms/resistance_id=460600`.
 
 Next action:
-- Commit and push this revert before any further kernel experiments.
 - Reintroduce any useful pieces from `da266e3f5` one by one with boot-only
   validation; do not restore the explicit `boot-completed` frgmark ack behavior
   unless userspace is patched to write it.
