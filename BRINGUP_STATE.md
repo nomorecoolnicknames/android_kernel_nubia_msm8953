@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-05-31T08:25:00Z
+Last updated: 2026-06-07T07:55:00-05:00
 
 ## Objective
 
@@ -31,6 +31,63 @@ persistence path.
 - Preserved 4.9 artifacts:
   - `/srv/forge/work/nx549j-preserve/Image.gz-dtb-nx549j-4.9`
   - `/srv/forge/work/nx549j-preserve/nx549j-boot-test-01.img`
+
+## 2026-06-07 attempt159 confirmed boot and ZTEMT batterydata
+
+Patch category: PROPER-FIX.
+
+Facts:
+- Confirmed working boot base is attempt130:
+  `/srv/forge/work/nx549j-preserve/release-attempt130-20260601-real-vendor-repartition/boot-real-vendor-repartition.img`,
+  SHA `684f7734e96b8229da8a60b3b38b0adf0882351f61aa239cbf5c7e3cc6403ff9`.
+- User confirmed attempt130 reached Android UI with working screen, touchscreen,
+  and Wi-Fi.
+- Attempt158 replaced only the appended DTB battery profile with
+  `ztemt_lg_3000mah`, flashed successfully, and booted Android, but dmesg
+  showed `of_batterydata_get_best_profile: No battery data found`.
+- On the running attempt158 image, `/proc/device-tree/qcom,battery-data`
+  contained `qcom,ztemt-batterydata`, proving the boot repack and DTB path were
+  valid.
+- Live measured battery ID on the target was
+  `/sys/.../power_supply/bms/resistance_id=460600`; the driver matches
+  `resistance_id / 1000` against `qcom,batt-id-kohm` within
+  `qcom,batt-id-range-pct=<15>`.
+- Attempt159 changed the ZTEMT profile's `qcom,batt-id-kohm` from `47` to
+  `460` and preserved the attempt130 ramdisk, boot header, cmdline, and image
+  size.
+- Attempt159 flash result: `Sending 'boot' (12636 KB) OKAY`, `Writing 'boot'
+  OKAY`, total `1.054s`.
+- Runtime after attempt159: `sys.boot_completed=1`, `dev.bootcomplete=1`,
+  `init.svc.bootanim=stopped`, `init.svc.surfaceflinger=running`, and
+  `init.svc.wpa_supplicant=running`.
+- Runtime battery result after attempt159:
+  `/sys/class/power_supply/bms/battery_type=ztemt_lg_3000mah`,
+  `battery/capacity=66`, `battery/status=Charging`, and
+  `bms/resistance_id=460600`.
+- Final running DTB check:
+  `/proc/device-tree/qcom,battery-data/qcom,ztemt-batterydata/qcom,batt-id-kohm`
+  is `00 00 01 cc`.
+- Final flashable image:
+  `/srv/forge/work/nx549j-preserve/release-attempt159-20260607-boot130-ztemt-battid460/boot-boot130-ztemt-battid460.img`.
+- Convenience flash copy:
+  `/srv/forge/android/nx549j/restored/last-successful-boot-attempt130-ztemt-battid460.img`.
+- Final boot SHA:
+  `f4b02a0d281da2d80be5428a3042a69b74bfe9a9b47f3523034cbf1e7ecca05a`.
+- Source owner patch:
+  `arch/arm64/boot/dts/qcom/nx549j/batterydata-ztemt-4v4-3000mah.dtsi`
+  now carries `qcom,batt-id-kohm = <460>`.
+- ADB transport was temporarily blocked by stale orphan `adb -L tcp:150xx`
+  reverse-server processes holding the USB node; libusb reported
+  `LIBUSB_ERROR_BUSY`. Killing `adb -L tcp:150*` restored normal ADB.
+
+Current interpretation:
+- Attempt159 is the latest confirmed booting boot image with the ZTEMT battery
+  profile applied and matched.
+
+Rollback condition:
+- If UI/touch/Wi-Fi regress or charging behavior gets worse, flash
+  `/srv/forge/android/nx549j/restored/last-successful-boot-attempt130.img`
+  back to `boot`.
 
 ## Current Build Result
 
@@ -6104,3 +6161,1211 @@ Final packaged artifact for this batch:
 - Flashing note: `system-ril-qrtr.img` is Android sparse. Do not write it with
   plain recovery `dd` unless first converted with `simg2img`; the OTA zip is
   the safer artifact for full userspace component testing.
+
+2026-05-31 4PDA NON-HLOS and runtime vendor follow-up:
+
+- FACT: 4PDA official firmware topic `782268`, post `58717801`
+  (`https://4pda.to/forum/index.php?showtopic=782268&view=findpost&p=58717801`)
+  publishes NX549J radio packages for TWRP. The latest global package checked
+  in this pass is `Radio_NX549J_update_V2.04EN_Crocodil.zip`.
+- Local 4PDA radio package:
+  `/srv/forge/work/nx549j-preserve/4pda-radio/Radio_NX549J_update_V2.04EN_Crocodil.zip`.
+- Radio package SHA-256:
+  `8e4e987ed411538df01deac5be37cf43c97600637ad67e345a562a3b8e178770`.
+- Extracted NON-HLOS:
+  `/srv/forge/work/nx549j-preserve/4pda-radio/v2.04en/NON-HLOS.bin`.
+- NON-HLOS SHA-256:
+  `b18a12d7bdf1a9b8bc451227a1566a2938784b0d1569839c7776749916d270e2`.
+- FACT: the full 4PDA radio zip writes `aboot`, `rpm`, `tz`, `cmnlib`,
+  `modem`, `lksecapp`, `cmnlib64`, `dsp`, `keymaster`, `devcfg`, and `sbl1`.
+  Only `NON-HLOS.bin` was flashed in this pass; the bootloader chain was not
+  overwritten.
+- Modem backup before 4PDA flash:
+  `/srv/forge/work/nx549j-preserve/4pda-radio/modem-before-4pda-v2.04en-30785d1a.img`.
+- Modem backup SHA-256:
+  `8efe995f781773479193a4b56b7fc316a956ee00f3383b0e410f68864fa06a95`.
+- FACT: `/dev/block/bootdevice/by-name/modem` size was `88080384`, matching
+  `NON-HLOS.bin`, and recovery readback after `dd` matched the NON-HLOS
+  SHA-256 `b18a12d7bdf1a9b8bc451227a1566a2938784b0d1569839c7776749916d270e2`.
+- FACT: the 4PDA NON-HLOS FAT image contains `image/wcnss.mdt`,
+  `image/modem.mdt`, WCNSS segment files, modem segment files, and
+  `verinfo/ver_info.txt`; extracted `ver_info.txt` reports
+  `MSM8953.LA.1.0-01075-STD.PROD-3`.
+- FACT: after booting Android, raw reads from the modem partition show the
+  `IMAGE` and `VERINFO` FAT root entries, and a loop mount of
+  `/cache/NON-HLOS-v2.04EN.bin` shows `/image/wcnss.mdt`.
+- FACT: runtime mount table contained both
+  `/dev/block/mmcblk0p1 on /system/vendor/firmware_mnt type vfat` and a later
+  `overlay on /system/vendor type overlay`; path lookup through
+  `/vendor/firmware_mnt` was empty until the NON-HLOS image was loop-mounted
+  over `/vendor/firmware_mnt` after boot.
+- INFERENCE: the current WCNSS firmware blocker is not missing stock firmware
+  anymore. The modem partition contains the expected files, but the parent
+  `/system/vendor` overlay hides the nested first-stage `firmware_mnt` mount.
+- Required next fix: make the modem firmware mount visible after vendor
+  overlay setup, either by moving/remounting the modem mount to a later init
+  phase on `/vendor/firmware_mnt` or by disabling the vendor overlay for this
+  bring-up image. Do not install the full 4PDA radio zip unless the bootloader
+  chain update is explicitly intended.
+- FACT: attempt119 OTA updater-script only updates
+  `/dev/block/bootdevice/by-name/system` and `boot`; it does not update the
+  separate runtime `/dev/block/bootdevice/by-name/oem` partition mounted at
+  `/system/vendor`.
+- FACT: live `/vendor/bin/qrtr-ns` and `/vendor/bin/sensors.qti` were still
+  zero-byte files after attempt119 artifact creation, while the matching local
+  build output under `out/target/product/nx549j/system/vendor/bin/` contained
+  valid non-zero AArch64 ELFs.
+- INFERENCE: the qcrild/qrtr/sensors userspace batch is not proven bad. It is
+  currently blocked by the device's separate `oem` vendor partition hiding the
+  rebuilt `system/vendor` payload from the system image/OTA.
+- Required next fix: produce and flash a targeted `oem`/runtime vendor update
+  or otherwise make the rebuilt vendor payload land on the actual
+  `/dev/block/bootdevice/by-name/oem` filesystem. The full rebuilt
+  `system/vendor` tree is larger than the 256 MiB `oem` partition, so a blind
+  raw copy is not valid.
+
+2026-05-31 attempt128 runtime codec/userspace follow-up:
+
+- Active boot image before this pass:
+  `/srv/forge/work/nx549j-preserve/release-attempt128-20260531-audio-max989-undef/boot.img`.
+- Active boot SHA-256:
+  `f5d8a1393c95662bcdf638cc92e98165befc5cd985579cc7fe647ec8c1d774cb`.
+- Runtime capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt128-20260531-audio-max989-undef/runtime-20260531-172002`.
+- Fresh codec capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt128-20260531-audio-max989-undef/runtime-20260531-172002/scrcpy-codec-20260531-173357`.
+- FACT: user reported Windows `scrcpy` now fails after server upload with
+  `Capture/encoding error: java.lang.IllegalStateException: null`, then retries
+  with lower `-m1600`.
+- FACT: `dumpsys media.metrics` records repeated failures of
+  `OMX.qcom.video.encoder.avc` at scrcpy-like `bitrate=8000000` for
+  1080x1920, 904x1600, 720x1280, 576x1024, and 448x800. Each failure carries
+  `errcode=-2147479543` and `errstate=STARTED`.
+- FACT: a direct device-side `screenrecord --verbose --time-limit 3
+  /sdcard/nx549j-screenrecord-codec-test.mp4` completed at 1080x1920/20 Mbps
+  and produced `/sdcard/nx549j-screenrecord-codec-test.mp4`, but only recorded
+  8 frames in 3 seconds.
+- FACT: VIDC/OMX kernel logs during the failure include
+  `HFI_EVENT_SESSION_ERROR`, `HFI_EVENT_SYS_ERROR`,
+  `Unknown session error (-1879048190)`, buffer return error `1006`, and a
+  Venus firmware fatal message from `VIDEO.VE.4.2.1-00008`.
+- FACT: boot logs also show `batched_hyp_assign: Failed to assign memory
+  protection, ret = -5` around secure VIDC context-bank setup.
+- INFERENCE: hardware AVC encode is not completely absent because
+  `screenrecord` can create a file, but the VIDC low-latency/repeated session
+  path used by scrcpy is unstable and falls into a Qualcomm OMX hardware error
+  before usable frames are delivered.
+- HYPOTHESIS: VIDC context-bank / secure memory assignment mismatch between
+  the 4.9 DTS and NX549J firmware may be part of the encoder instability. Do
+  not replace the VIDC DTS with the old 3.18 `qcom,vidc-iommu-domains` format
+  without also proving that the matching 4.9 SMMU nodes exist or adding a
+  narrow diagnostic.
+- FACT: live runtime still misses blobs that the local build output expects
+  under the active `/system/vendor`/`oem` vendor filesystem:
+  `vendor.qti.hardware.perf@1.0.so`, `lib-rtpdaemoninterface.so`,
+  `com.quicinc.cne.api@1.0.so`, `com.quicinc.cne.api@1.1.so`,
+  `vendor.qti.hardware.perf@1.0-service`, and its init rc.
+- FACT: logs show corresponding linker failures for `ims_rtp_daemon`,
+  `imsdatadaemon`, and perf clients; these are live vendor payload mismatch
+  evidence, not missing source entries, because the blobs exist in
+  `vendor/nubia/msm8953-common/proprietary/vendor`.
+- FACT: live `/cache` has only about 6.5 MiB free, but the confirmed missing
+  perf/CNE/RTP blobs are small enough for a temporary overlay-upper test.
+- Planned live test: push the missing small blobs into
+  `/cache/overlay/vendor/upper`, fix permissions, reboot, then retest the
+  codec path and linker spam. This is a diagnostic overlay test, not a
+  substitute for producing the correct runtime `oem` vendor update.
+- FACT: before the overlay push could start, the target `30785d1a` went
+  `offline` and then disappeared from the reverse ADB server. Other connected
+  devices must not be touched.
+
+2026-05-31 pending attempt129 camera DTS batch:
+
+- Patch category: PROPER-FIX for camera DTS parity with NX549J stock sensor
+  board wiring.
+- Kernel source changes:
+  - `arch/arm64/boot/dts/qcom/msm8953-mtp-nx549j.dts` now includes
+    `nx549j/msm8953-camera-sensor-nx549j.dtsi`.
+  - `arch/arm64/boot/dts/qcom/nx549j/msm8953-camera-sensor-nx549j.dtsi`
+    removes generic MTP camera flash/sensors and adds NX549J-specific rear and
+    front camera nodes with stock GPIO/regulator/CSI mount-angle data.
+- Expected next marker after booting an image containing this DTS:
+  camera services should move from generic MTP sensor/power assumptions to
+  NX549J-specific regulator/GPIO probe results. Any remaining failure should
+  reference concrete sensor identity, regulator, CCI, CSIPHY, or actuator/eeprom
+  errors rather than duplicate generic MTP camera nodes.
+- Rollback condition:
+  revert the NX549J camera include only if boot logs prove it regresses kernel
+  init or camera probe before the previous generic MTP behavior.
+
+2026-06-01 attempt130 real vendor image and minimal oem resize:
+
+- Patch category: PROPER-FIX for runtime vendor payload delivery.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt130-20260601-real-vendor-repartition`.
+- Built artifacts:
+  - boot image:
+    `boot-real-vendor-repartition.img`
+    SHA-256 `684f7734e96b8229da8a60b3b38b0adf0882351f61aa239cbf5c7e3cc6403ff9`.
+  - sparse vendor image:
+    `vendor-real-vendor-repartition.img`
+    size `267100308`
+    SHA-256 `9318f2f8326e9312c59d2a975f621cdbf9f4025c75483907686fbfd3d55dece0`.
+  - raw vendor image for recovery `dd`:
+    `vendor-real-vendor-repartition.raw.img`
+    size `300384256`
+    SHA-256 `f1d82b85e4faadea41ac2335bec881ae545d6cdbbc0084fc3912f29ffde0a4cd`.
+  - recovery image:
+    `recovery-real-vendor-repartition.img`
+    SHA-256 `f88c2d535e15294dcfdb967aa9bb4af3019640d9165f627a8d94bf9d15d65183`.
+- Source changes in this attempt:
+  - `device/nubia/nx549j/BoardConfig.mk` enables real vendor image output and
+    sets `BOARD_VENDORIMAGE_PARTITION_SIZE := 300384256`.
+  - `vendor/nubia/msm8953-common/proprietary/priv-app/ims/ims.apk` was rebuilt
+    with required `uses-library` `ims-ext-common`.
+  - `vendor/nubia/msm8953-common/Android.mk` sets
+    `LOCAL_USES_LIBRARIES := ims-ext-common` only for the `ims` module.
+  - `device/nubia/nx549j/device.mk` copies `sensors/hals.conf` to
+    `$(TARGET_COPY_OUT_VENDOR)/etc/sensors/hals.conf`.
+  - `device/nubia/msm8953-common/msm8953.mk` now packages
+    `android.hardware.sensors@1.0-service.nubia8953`.
+  - `arch/arm64/boot/dts/qcom/msm8953-mtp-nx549j.dts` no longer directly
+    includes generic `msm8953-camera-sensor-mtp.dtsi`; the generic include is
+    already inherited through `msm8953-mtp.dtsi`, and the NX549J camera overlay
+    deletes/replaces those nodes.
+- FACT: building `vendorimage` at the stock `oem` size failed:
+  - `vendor_size=268435456`.
+  - `build_image` reported vendor tree size `274885632` bytes.
+  - `e2fsdroid` failed while writing `libril-qc-qmi-1.so`.
+- FACT: the live GPT has `oem` as partition 31:
+  - start sector `10030144`.
+  - old end sector `10554431`.
+  - old size `268435456` bytes.
+  - type GUID `7DB6AC55-ECB5-4E02-80DA-4D335B973332`.
+  - unique GUID `18427616-B840-273C-6745-7ABA2F96560B`.
+- FACT: partition 32 `limits` starts at sector `10616832`, so partition 31 can
+  be enlarged to end sector `10616831` without moving later partitions or
+  `userdata`.
+- FACT: `sgdisk --pretend` validated the exact resize command with preserved
+  type GUID and unique GUID.
+- FACT: direct `build_image` with `vendor_size=300384256` succeeded, and
+  `simg2img` confirms the raw vendor image is exactly `300384256` bytes.
+- FACT: GPT backup before any repartition was captured as
+  `gpt-before-attempt130.bin` with SHA-256
+  `992a248158d0fa29c598ffc4099f0d4563e2f15fcda2e0f8e10ff0f3476e94b1`.
+- FACT: a large `adb exec-out dd` attempt from the booted system made serial
+  `30785d1a` go `offline`. No repartition or attempt130 image flash was done
+  after that.
+- Flashing tool:
+  - `flash-attempt130-from-recovery.sh` is a host-side script that targets only
+    serial `30785d1a` via `127.0.0.1:15038`.
+  - It refuses a normally booted Android system unless
+    `ALLOW_LIVE_REPARTITION=1` is set.
+  - It backs up GPT, optionally backs up current `oem`, resizes only partition
+    31, reboots recovery to reread GPT, flashes boot plus raw vendor, and
+    verifies sha256 from block devices when available.
+- Required next step:
+  boot the phone to recovery, verify ADB is online for serial `30785d1a`, then
+  run the attempt130 flash script. After boot, collect logcat/dmesg and verify:
+  `qcrild`, IMS linker failures, sensors service, camera provider, Wi-Fi/BT,
+  VIDC/scrcpy, light/flashlight, fingerprint, audio, and vibrator state.
+
+2026-06-01 attempts131-133 runtime vendor component fixes:
+
+- Patch category: PROPER-FIX for the active `/system/vendor` payload on the
+  enlarged runtime `oem` partition.
+- Release directories:
+  - `/srv/forge/work/nx549j-preserve/release-attempt131-20260601-wcnss-vendor`
+  - `/srv/forge/work/nx549j-preserve/release-attempt132-20260601-secconfig-camera-protobuf`
+  - `/srv/forge/work/nx549j-preserve/release-attempt133-20260601-gps-seccomp-vendor`
+- Final flashed artifact in this batch:
+  - sparse vendor image:
+    `vendor-attempt133-gps-seccomp-vendor.img`
+    SHA-256 `cbad9ca355cb0ff83b630c3b4b26694cd5a9a13413d8e4214cbd08fafc287d3a`
+  - raw vendor image:
+    `vendor-attempt133-gps-seccomp-vendor.raw.img`
+    SHA-256 `54363bbcaca365d4e0380188bcc460dd4ecc3b3561f64d189d55686156c48b37`
+- FACT: attempt131 installed `wcnss_service` into vendor. Runtime then had
+  `wcnss_service`, `wlan0`, `p2p0`, `wpa_supplicant`, and WCNSS firmware
+  loaded.
+- FACT: attempt132 added `sec_config`, fixed the 32-bit protobuf-lite
+  compatibility symlink, and added the missing camera `libfastcvopt.so`.
+  Runtime no longer had IPC_RTR permission spam, and `mm-qcamera-daemon`
+  stopped linker-crashing.
+- FACT: attempt133 added media seccomp policy files and `libgps.utils.so`.
+  Runtime files verified present:
+  `/vendor/etc/sec_config`,
+  `/vendor/etc/seccomp_policy/mediacodec.policy`,
+  `/vendor/etc/seccomp_policy/mediaextractor.policy`,
+  `/vendor/lib64/libgps.utils.so`,
+  `/vendor/lib/libprotobuf-cpp-lite.so -> libprotobuf-cpp-lite-3.9.1.so`,
+  and `/vendor/lib64/libprotobuf-cpp-lite.so -> libprotobuf-cpp-lite-v29.so`.
+- FACT: all attempt131-133 raw vendor images were flashed to
+  `/dev/block/bootdevice/by-name/oem` and readback SHA-256 matched the local
+  raw image.
+- FACT: attempt133 runtime capture:
+  `/srv/forge/work/nx549j-preserve/release-attempt133-20260601-gps-seccomp-vendor/runtime-20260531-234353`.
+- FACT: fresh live Wi-Fi/RIL capture:
+  `/srv/forge/work/nx549j-preserve/live-wifi-ril-check-20260531-234854`.
+- FACT: Wi-Fi scanning is now functional. `cmd wifi list-scan-results` returns
+  visible 2.4 GHz and 5 GHz networks, `dumpsys wifi` reports five non-empty
+  scans, `numHalCrashes=0`, `numWificondCrashes=0`, and
+  `numSupplicantCrashes=0`.
+- FACT: screen recording through the hardware encoder is now at least
+  minimally functional after the seccomp update:
+  `screenrecord --time-limit 2 /data/local/tmp/screenrecord-test.mp4`
+  returned `rc=0` and produced a non-empty file.
+- FACT: RIL is past the earlier linker/IPC_RTR blockers. The live system has
+  both `rild` processes running, baseband
+  `NX549J_Z69_EN_TSXPR1JE11L204`, `vendor.peripheral.modem.state=ONLINE`,
+  `ro.vendor.ril.mbn_copy_completed=1`, and `persist.radio.multisim.config=dsds`.
+- FACT: live telephony still reports `gsm.sim.state=ABSENT,ABSENT` and no
+  operator/network type. If a SIM is physically installed, the next RIL task is
+  SIM/UIM detection rather than generic modem boot.
+- FACT: `dpmd` still restarts from the system partition, not vendor, and fails
+  with:
+  `CANNOT LINK EXECUTABLE "/system/bin/dpmd": cannot locate symbol "strdup8to16" referenced by "/system/lib64/libdpmframework.so"`.
+  The prior source-side init rc edit is not effective until a matching system
+  image or direct system-side blob/init update is flashed.
+- FACT: camera is no longer blocked by missing userspace blobs, but kernel
+  logs repeatedly show:
+  `MSM-SENSOR-INIT msm_sensor_wait_for_probe_done wait timeout` and
+  `VIDIOC_MSM_SENSOR_INIT_CFG failed`.
+  This points back to NX549J camera DTS sensor/actuator/eeprom/flash tables.
+- Current working status after attempt133:
+  boot to Android, display/touch, Wi-Fi scan, WCNSS, basic hardware AVC encode,
+  RIL process startup, and camera userspace linker load are working.
+- Current unresolved component blockers:
+ camera sensor DTS/probe timeout, SIM/UIM/RIL service state, system-side
+ `dpmd`, audio HAL/routing, sensors registry, LED/flashlight pinctrl/HAL, and
+ final full-build hygiene once disk pressure is reduced.
+
+2026-06-01 attempt134 live IMS/audio/RIL patch and component triage:
+
+- Patch category: DIAGNOSTIC live system/vendor patch plus source-side
+  PROPER-FIX candidates.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt134-20260601-live-ims-audio`.
+- Fresh component capture:
+  `/srv/forge/work/nx549j-preserve/live-component-check-20260601-054938`.
+- Live-patched files:
+  - `/system/priv-app/ims/ims.apk` from the source prebuilt with
+    `uses-library:'ims-ext-common'`.
+  - `/vendor/lib/hw/audio.primary.msm8953.so` from the built 32-bit CAF audio
+    HAL.
+  - `/system/etc/permissions/qti_libpermissions.xml` with a compatibility
+    alias for `android.hidl.manager@1.0-java`.
+  - `/system/etc/init/dpmd.rc` from source with
+    `LD_PRELOAD=/system/lib64/libshim_dpmframework.so`.
+- FACT: `com.android.phone` no longer crashes on missing
+  `org/codeaurora/ims/utils/QtiCarrierConfigHelper` after replacing `ims.apk`.
+- FACT: `com.qualcomm.qcrilmsgtunnel` no longer crashes on missing
+  `android.hidl.manager.V1_0.IServiceNotification$Stub` after adding the
+  `android.hidl.manager@1.0-java` alias. The service process is running.
+- FACT: `dpmd` no longer linker-crashes on `strdup8to16`. The live system has
+  parent and worker `dpmd` processes and the service sockets exist, but SELinux
+  denials remain permissive-only policy debt.
+- FACT: RIL transport is much cleaner than attempt133. The live system has
+  both `rild` processes, `com.android.phone`,
+  `com.qualcomm.qcrilmsgtunnel`, `imsqmidaemon`, `imsdatadaemon`,
+  `ims_rtp_daemon`, and `vendor.peripheral.modem.state=ONLINE`.
+- FACT: live telephony still reports `gsm.sim.state=ABSENT,ABSENT`. The fresh
+  radio log also shows a WCDMA cell-info response, so modem/radio is not just
+  dead. If a SIM is physically installed, the next RIL task is UIM/SIM-slot
+  detection; if no SIM is installed, this is expected.
+- FACT: Wi-Fi scan is working. Fresh `cmd wifi list-scan-results` returns
+  multiple 2.4 GHz and 5 GHz networks, `dumpsys wifi` reports
+  `numNonEmptyScanResults=6`, `SCAN_SUCCESS: 6`, `numEmptyScanResults=0`,
+  `numHalCrashes=0`, `numWificondCrashes=0`, and
+  `numSupplicantCrashes=0`.
+- FACT: sensors services now start. Fresh `ps -A` shows both
+  `android.hardware.sensors@1.0-service.nubia8953` and `sensors.qcom.real`.
+  Runtime functionality still needs `dumpsys sensorservice` and movement tests.
+- FACT: Bluetooth userspace comes up far enough to run
+  `android.hardware.bluetooth@1.0-service-qti` and `com.android.bluetooth`.
+  Pairing/scan/audio routing still needs a focused test.
+- FACT: the light HAL is still crashing at runtime on:
+  `Failed to open /sys/class/leds/nubia_led/blink_mode`.
+  Source-side patch from the audio/light subagent makes missing `nubia_led`
+  nodes optional in `device/nubia/msm8953-common/light/service.cpp`, but this
+  has not yet been built/flashed.
+- FACT: `qti_gnss_service` still restarts with status 255. Logs show the
+  current shipped service tries to register
+  `android.hardware.gnss@1.1::IGnss/default`, falls back to 1.0, then fails
+  because there is no matching framework GNSS implementation entry. The source
+  blob tree currently contains only the old `vendor.qti.gnss@1.0-service`
+  files even though `proprietary-files.txt` references the newer
+  `android.hardware.gnss@2.0-service-qti` stack.
+- FACT: `.dataservices` is still running but restarts/crashes around the
+  Android 11 IMS API mismatch
+  `android.telephony.ims.stub.ImsRegistrationImplBase$Callback`. A RIL
+  subagent is now assigned to decide whether to shim, replace, or temporarily
+  disable this CNE/dataservices package.
+- FACT: camera is still blocked below userspace camera app behavior. Kernel
+  logs still show missing camera vreg/gpio tables, flash GPIO data problems,
+  and the prior `MSM-SENSOR-INIT` wait timeout path. The camera subagent found
+  no safe blind DTS replacement; the next safe step is more targeted kernel
+  logging around sensor init/probe rather than copying another board's camera
+  table.
+- FACT: audio is partially advanced only by a live 32-bit HAL replacement.
+  Audio HAL source wiring now exists for `msm8953`, but the module/full build
+  was interrupted while `ckati` was regenerating under disk pressure. The live
+  64-bit HAL slot remains the default stub hardlink because the direct push ran
+  out of vendor space.
+- Current working status after attempt134:
+  boot to Android, display/touch, Wi-Fi scan, WCNSS, basic hardware AVC encode,
+  RIL process startup, qcril message tunnel, dpmd linker startup, sensors
+  service startup, Bluetooth service startup, and camera userspace linker load
+  are working or at least past their earlier hard blockers.
+- Current unresolved component blockers:
+  camera sensor DTS/probe, SIM/UIM only if a SIM is inserted, CNE/dataservices
+  IMS API mismatch, GNSS HAL service selection/blob set, light HAL build/flash,
+  audio routing and final 64-bit HAL packaging, flashlight pinctrl, SELinux
+  cleanup, and final full image rebuild once disk pressure is lower.
+
+2026-06-01 attempt135 light/CNE/GNSS follow-up:
+
+- Patch category: PROPER-FIX candidates plus one interrupted DIAGNOSTIC live
+  patch.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt135-20260601-live-light-hal`.
+- FACT: a first module build exposed a bad source edit: adding `msm8953` to
+  `hardware/qcom/audio` duplicated `audio.primary.msm8953`, which is already
+  defined by `hardware/qcom-caf/msm8996/audio`. The `hardware/qcom/audio`
+  additions were removed, and a second module build passed.
+- FACT: `m android.hardware.light@2.0-service.nubia -j1` completed
+  successfully after the duplicate audio module fix.
+- FACT: live-pushed light HAL binary SHA-256 matched on-device:
+  `0f7d67ff56275273f0cc6b66b6ddbfb967d1d82f3de176f10ac5bf1861413a0a`.
+- FACT: after the light binary push, `vendor.light-hal-2-0` no longer failed
+  on missing `/sys/class/leds/nubia_led/*`; logs changed to optional-node
+  warnings. The next light blocker was VINTF registration:
+  `Service android.hardware.light@2.0::ILight/default must be in VINTF manifest`.
+- FACT: source `device/nubia/msm8953-common/manifest.xml` now declares
+  `android.hardware.light@2.0::ILight/default`.
+- URGENT FACT: the attempted live push of the expanded vendor VINTF manifest
+  failed with `No space left on device` and removed the overlay-visible
+  `/vendor/etc/vintf/manifest.xml`. A minified manifest payload was prepared at
+  `vendor-manifest-light-min.xml`, but a second push also hit ENOSPC, then
+  serial `30785d1a` dropped from ADB.
+- FACT: no cache files were deleted before ADB dropped. Large freeable cache
+  files were identified but not removed:
+  `/cache/NON-HLOS-v2.04EN.bin`,
+  `/cache/modem-before-4pda-v2.04en.img`,
+  `/cache/attempt120-vendor-upper-payload.tar`, and
+  `/cache/boot-before-attempt120.img`.
+- Required immediate recovery when `30785d1a` returns to ADB:
+  1. Free cache space after backing up those large `/cache` files, or delete
+     only if a host backup already exists.
+  2. Push
+     `/srv/forge/work/nx549j-preserve/release-attempt135-20260601-live-light-hal/vendor-manifest-light-min.xml`
+     to `/vendor/etc/vintf/manifest.xml`.
+  3. Verify `sha256sum /vendor/etc/vintf/manifest.xml`.
+  4. Restart `vendor.light-hal-2-0` and verify it registers in `lshal`.
+- FACT: CNE/dataservices root cause is Android API skew, not a missing jar.
+  `CNEService.apk` targets Android P-era IMS APIs and crashes on Android 11
+  missing `ImsRegistrationImplBase$Callback`.
+- Source change: `device/nubia/nx549j/device.mk` now filters out
+  `CNEService`, and `device/nubia/msm8953-common/vendor.prop` sets
+  `persist.vendor.cne.feature=0`. Native CNE/DPM libraries remain packaged.
+- FACT: GNSS root cause is an incomplete local blob set. The shipped
+  `vendor.qti.gnss@1.0-service` wrapper expects an Android GNSS passthrough
+  implementation, but the tree lacked `android.hardware.gnss@1.0-impl-qti.so`.
+- Source change: matching 32-bit and 64-bit
+  `android.hardware.gnss@1.0-impl-qti.so` blobs were imported from the local
+  `/srv/forge/work/nx549j-crdroid-mine/mpfs/vendor` tree, not from an
+  unrelated internet blob set.
+  - 32-bit SHA-256:
+    `17c61d2359682c78e301e38a4dcfd410e9413a82df365ba02c46cfbd6987387d`.
+  - 64-bit SHA-256:
+    `3e45a3ac93d7061ed52de251fa2286ce322e1f7a7dae0abce6ef462863b17696`.
+- Source change: `proprietary-files.txt`, `msm8953-common-vendor.mk`, and
+  `device/nubia/msm8953-common/manifest.xml` now package and declare
+  `android.hardware.gnss@1.0::IGnss/default`.
+- Next full-image requirement: rebuild vendor/system images once disk pressure
+  is lower. The live device is ahead of source in some places and behind source
+  in others; attempt135 source fixes need a clean image flash or a carefully
+  repaired live overlay.
+
+2026-06-03 attempt149 userspace-timeout boot-complete ack:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt149-20260602-userspace-timeout-boot-ack`.
+- Build logs:
+  `/srv/forge/work/nx549j-preserve/build-attempt149-20260602-userspace-timeout-boot-ack/build.log`
+  and
+  `/srv/forge/work/nx549j-preserve/build-attempt149-20260602-userspace-timeout-boot-ack/vendorimage.log`.
+- Evidence behind the change:
+  old runtime dmesg from attempt113 showed
+  `userspace exec reached, auto-acking recovery timeout` at about 10 seconds,
+  then `userspace ack reason=userspace-reached, recovery timeout disarmed`.
+  That explained why a later bootlogo/userspace hang needed a manual return to
+  recovery and did not leave an automatic recovery timeout trace.
+- Files changed:
+  - `arch/arm64/kernel/frgmark.c`: keep the early recovery timeout before
+    userspace, reschedule it to 900 seconds at `userspace_reached`, and wait
+    for an explicit userspace ack instead of auto-acking.
+  - `device/nubia/msm8953-common/rootdir/etc/init.qcom.rc`: write
+    `/proc/frgmark_userspace_ack boot-completed` only when
+    `sys.boot_completed=1`.
+  - `arch/arm64/boot/dts/qcom/nx549j/msm8953-nubia-common-nx549j.dtsi`:
+    keep the attempt148 recovery DT fstab fix, `/system_root` with
+    `wait,recoveryonly`.
+  - `bootable/recovery/minui/graphics_fbdev.cpp`: keep the attempt148 recovery
+    primary framebuffer selection fix, choosing physical DSI fb1 instead of
+    writeback fb0.
+- Artifact identity:
+  - `boot.img` SHA-256:
+    `3b22bd2647d94f51a2f5d90a1962a0616364e0b1221e9f3591953c677d0bd460`.
+  - `recovery.img` SHA-256:
+    `f0595ad52efc7c990e40e80a799c2058e83230549a6c1f2eacb0c8bc7585421d`.
+  - `vendor.img` SHA-256:
+    `870072c4a9f917ec3ce9c45014edf7bb0eb962053876cb1bb6e8820f11cedf19`.
+  - `vendor.raw.img` SHA-256:
+    `2ba15eabae478975dfcd4fbda7657f30e0e493ed573303bc4a2eff3749c58911`.
+- Flash result:
+  flash helper completed from recovery on serial `30785d1a`; post-dd prefix
+  hashes matched for `boot`, `recovery`, and `oem`.
+- Runtime result:
+  after `adb -s 30785d1a reboot`, the postflash monitor recorded 120 samples
+  over about 20 minutes and every sample was `state=missing`. It observed no
+  system `device` state and no recovery fallback state. Capture-local report:
+  `/srv/forge/work/nx549j-preserve/capture-attempt149-postflash-monitor-20260602-1855/REPORT.md`.
+- Expected next marker:
+  if a post-reboot kernel log is collected, it should show either
+  `recovery timeout rescheduled reason=userspace-reached seconds=900` followed
+  by a late timeout/restart path, or the absence of that marker proving the
+  boot failed before `userspace_reached`.
+- Rollback condition:
+  revert only if the new logs show that waiting for explicit
+  `boot-completed` ack prevents recovery fallback on a path that previously
+  could recover, or if `sys.boot_completed=1` cannot write the proc ack.
+- Next required step:
+  manually return the device to recovery and pull pstore/dmesg/recovery logs
+  before changing more boot watchdog logic. The current postflash evidence does
+  not prove whether the late timer failed internally or whether recovery/USB
+  simply never became visible.
+
+2026-06-03 attempt149 returned-recovery pstore result:
+
+- Capture directory:
+  `/srv/forge/work/nx549j-preserve/capture-attempt149-returned-recovery-20260603-005122`.
+- FACT: `adb pull` from recovery was flaky, but `exec-out` captured
+  `execout-pstore/console-ramoops-0` and `execout-pstore/dmesg-ramoops-0`.
+- FACT: pstore proves attempt149 reached userspace:
+  `FRGmark stage=15 name=userspace_reached`,
+  `FRGmark: recovery timeout rescheduled reason=userspace-reached seconds=900`,
+  and `FRGmark: userspace exec reached, waiting for explicit ack late_timeout=900`.
+- FACT: the timeout was then disabled too early by the stale first-stage init
+  ack:
+  `FRGmark stage=17 name=userspace_ack` and
+  `FRGmark: userspace ack reason=first-stage-mounted, recovery timeout disarmed`.
+- FACT: the same pstore tail shows orderly shutdown and
+  `reboot: Restarting system with command 'bootloader'` at about 12.6 seconds.
+- Updated hypothesis:
+  attempt149's recovery fallback logic was not stuck before userspace; it was
+  disarmed by a stale ack before `sys.boot_completed=1`. The next patch should
+  let only the explicit `boot-completed` ack disarm recovery fallback.
+
+2026-06-03 attempt150 ack allowlist patch:
+
+- Patch category: BOOT-UNBLOCK with DIAGNOSTIC logging.
+- Build directory:
+  `/srv/forge/work/nx549j-preserve/build-attempt150-20260603-ack-allowlist`.
+- Files changed:
+  - `arch/arm64/kernel/frgmark.c`: accept `/proc/frgmark_userspace_ack` only
+    when the trimmed reason is `boot-completed`; print ignored ack reasons so
+    the next pstore proves whether old userspace is still writing stale values.
+  - `system/core/init/first_stage_init.cpp`: remove the stale
+    `first-stage-mounted` ack source from the source tree.
+  - `system/core/init/init.cpp`: remove the stale `init-main-queue` ack source
+    from the source tree.
+- Immediate test scope:
+  build and flash only `bootimage recoveryimage`; do not build a full ROM unless
+  later evidence proves the on-device `/system/bin/init` must be replaced for
+  this specific watchdog test.
+- Expected next markers:
+  stale acks should log as
+  `FRGmark: userspace ack ignored reason=... waiting_for=boot-completed`.
+  Only `reason=boot-completed` may disarm the recovery timeout.
+- Rollback condition:
+  revert the allowlist only if a fresh attempt150 pstore proves Android reached
+  `sys.boot_completed=1` but the proc ack was blocked or malformed despite the
+  vendor init trigger writing `boot-completed`.
+
+2026-06-03 attempt150 boot-only artifact and monitor result:
+
+- FACT: the normal Android `m bootimage recoveryimage -j1` attempt was stopped
+  after Kati spent more than 10 minutes in filesystem wait during graph regen.
+  No full ROM, systemimage, or vendorimage build was run for attempt150.
+- FACT: a kernel-only build was run against the existing
+  `out/target/product/nx549j/obj/KERNEL_OBJ` and completed successfully:
+  `/srv/forge/work/nx549j-preserve/build-attempt150-20260603-ack-allowlist/kernel-only.log`.
+  It rebuilt `arch/arm64/kernel/frgmark.o`, linked `vmlinux`, generated a fresh
+  `System.map`, and rebuilt `arch/arm64/boot/Image.gz-dtb`.
+- Artifact directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt150-20260603-ack-allowlist`.
+- Artifact identity:
+  - `boot.img` SHA-256:
+    `8e59dbf798d25fbc86e74c1c8ffb28901f9b69bdae93ab3b5ece8df2cb52e441`.
+  - `Image.gz-dtb` SHA-256:
+    `668058d6260df365591eb9192e9f75be9741087915c09b702813f848e69f0425`.
+  - `System.map` SHA-256:
+    `47313b669cacca949fe7b38f3cb76b1c7e1c909c41c4717b6034404ebf47e48d`.
+- FACT: `strings vmlinux` confirmed the new allowlist marker strings are in the
+  built kernel:
+  `boot-completed` and
+  `FRGmark: userspace ack ignored reason=%s waiting_for=%s artifact=%s`.
+- FACT: `boot.img` was repacked from attempt149 boot header/ramdisk with only
+  the kernel replaced. Recovery/vendor/system were not flashed.
+- Flash result:
+  `flash-attempt150-boot-only-from-codex-recovery.sh` flashed boot from
+  recovery on serial `30785d1a`; post-dd boot partition prefix SHA matched
+  `8e59dbf798d25fbc86e74c1c8ffb28901f9b69bdae93ab3b5ece8df2cb52e441`.
+- Runtime monitor:
+  `/srv/forge/work/nx549j-preserve/capture-attempt150-postflash-monitor-20260602-2112`.
+  After `adb -s 30785d1a reboot`, 180 samples over about 30 minutes were all
+  `error: device '30785d1a' not found`. No system ADB and no recovery fallback
+  ADB appeared during the monitor window.
+- Current interpretation:
+  attempt150 likely closed the immediate stale-ack disarm path, because the
+  attempt149 12.6-second `bootloader` reboot pattern did not reappear as a
+  visible recovery/system ADB state. However, the run does not prove whether
+  the 900-second timeout fired. Fresh pstore after manual recovery is required
+  before changing the timer/restart path again.
+- Next required step:
+  manually return `30785d1a` to recovery and pull pstore with `exec-out` before
+  any new boot watchdog patch. The next pstore should be checked for
+  `userspace ack ignored`, `recovery timeout firing seconds=900`, and the final
+  reboot command.
+
+2026-06-03 attempt151 raw-WDT userspace-120 diagnostic fallback:
+
+- Patch category: DIAGNOSTIC / BOOT-UNBLOCK for recovery automation only.
+- Evidence for change:
+  attempt149 pstore proved BCB was written by 8.54s and later cleared by stale
+  `first-stage-mounted` ack. Attempt150 blocked stale ack in the kernel, but
+  its boot cmdline still had no `frgmark.raw_wdt=1`, and the 30-minute monitor
+  never saw `30785d1a` return over ADB. This left an unbounded hang path if the
+  kernel/userspace stopped before the 900-second fallback could reboot.
+- Files changed:
+  - `arch/arm64/kernel/frgmark.c`: shorten
+    `FRG_RECOVERY_USERSPACE_TIMEOUT_SEC` from 900 to 120 seconds, call
+    `frgmark_arm_early_recovery_guard("raw-wdt-param")` when raw WDT is parsed,
+    and disable the raw WDT only after an allowed `boot-completed` ack.
+  - `device/nubia/nx549j/BoardConfig.mk`: add `frgmark.raw_wdt=1` to the
+    reproducible boot cmdline.
+- Build:
+  `/srv/forge/work/nx549j-preserve/build-attempt151-20260603-raw-wdt-userspace120/kernel-only-clang.log`.
+  This was a kernel-only `Image.gz-dtb` build against the existing
+  `out/target/product/nx549j/obj/KERNEL_OBJ`; no full ROM, system, vendor, or
+  recovery build was run.
+- Artifact directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt151-20260603-raw-wdt-userspace120`.
+- Artifact identity:
+  - `boot.img` SHA-256:
+    `2759a887d7ff0132efba7dda814cac5b2dde5311cb26294f6c457a9931b130eb`.
+  - `Image.gz-dtb` SHA-256:
+    `1afccae3e3e0d73c653588e72cb92cf5731ddf444996fcc88a9597dabfb23617`.
+  - `System.map` SHA-256:
+    `595bdd0b1427aa28ce4b4f30fe29352e6ea7308a7be17d8d4cb7e65e8c1abca7`.
+  - `vmlinux` SHA-256:
+    `099792ddc0dece77c1b36b69b9feb2bb806e93dc9f5c432a6ee2812e5d9edee4`.
+- Verification:
+  `sha256sum -c SHA256SUMS` passed. `unpack_bootimg.py` confirmed header
+  version 0, page size 2048, os version 11.0.0, os patch level 2024-02, and
+  cmdline containing `frgmark.raw_wdt=1 frgmark.recovery_timeout_sec=120
+  frgmark.bcb_misc_devt=179:28`. Unpacked kernel and ramdisk matched the
+  packaged `Image.gz-dtb` and attempt150 ramdisk. `strings vmlinux` confirmed
+  `raw-wdt-param`, `early raw WDT disabled`, `boot-completed`, and
+  `userspace ack ignored`.
+- Current device status:
+  a watcher on reverse ADB port 15038 is running for serial `30785d1a` and
+  currently sees only non-target devices `711HEBSR277K5` and `91HEBNL163XD`.
+  When `30785d1a` appears in recovery, first pull attempt150 pstore, then flash
+  attempt151 boot-only if recovery shell is usable.
+- Expected next markers:
+  pstore after attempt151 should show `FRGmark: raw WDT enabled`,
+  `FRGmark: early raw WDT armed seconds=120`, stale ack rejection, and
+  `late_timeout=120`. If `boot-completed` happens, it should also show
+  `FRGmark: early raw WDT disabled reason=userspace-ack`.
+- Rollback condition:
+  if attempt151 resets before BCB is written or repeatedly prevents a real
+  `boot-completed` path, remove `frgmark.raw_wdt=1` and restore the longer
+  userspace timeout after collecting fresh pstore.
+
+2026-06-03 attempt151 reverse-ADB flash result:
+
+- FACT: reverse ADB port `15038` became reachable and showed the target serial
+  `30785d1a` in recovery at `20260603-124744`.
+- Watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt151-20260603-raw-wdt-userspace120/runtime/wait-logs/watch-tmux-20260603-121840-15038.log`.
+- Flash directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt151-20260603-raw-wdt-userspace120/runtime/flash-boot-bcb-20260603-121840-15038`.
+- FACT: recovery-ramoops preflight was flashed and verified before the boot
+  test. The recovery prefix SHA-256 after flashing matched
+  `9700236dfa0d2057cf29c4247fa27a0d0b85a9e64e5033d511d6ac8f0469961c`.
+- FACT: `attempt151` boot was pushed and flashed to the real `boot`
+  partition. The boot partition prefix SHA-256 matched
+  `2759a887d7ff0132efba7dda814cac5b2dde5311cb26294f6c457a9931b130eb`.
+- Runtime result:
+  after normal reboot, the runner waited 260 seconds and timed out:
+  `RESULT=automatic-recovery-timeout`. No Android userspace ADB state and no
+  automatic recovery ADB state appeared during that window.
+- Current status after timeout:
+  the unattended runner is still waiting for manual recovery in tmux session
+  `nx549j-attempt151-15038`, but the current `adb -H 127.0.0.1 -P 15038
+  devices -l` output shows only non-target devices `711HEBSR277K5` and
+  `91HEBNL163XD`. Serial `30785d1a` is missing.
+- Interpretation:
+  this run proves the guarded flash path worked and the boot partition identity
+  was correct. It does not yet prove whether the raw WDT marker path fired,
+  because pstore after the failed boot has not been collected. The next action
+  is to let the waiting finish helper capture pstore/logs when `30785d1a`
+  returns to recovery.
+
+2026-06-03 attempt152 current targeted boot/recovery/vendor package:
+
+- Patch category: SOURCE-SYNC / TARGETED-IMAGE REFRESH. This package was built
+  to remove stale mixing between older flashed images and the current source
+  tree. It is not a full OTA.
+- Build directory:
+  `/srv/forge/work/nx549j-preserve/build-attempt152-20260603-current-targeted-images`.
+- Build command:
+  `source build/make/envsetup.sh && lunch lineage_nx549j-userdebug && m bootimage recoveryimage vendorimage -j1`.
+- Build log:
+  `/srv/forge/work/nx549j-preserve/build-attempt152-20260603-current-targeted-images/build-rerun1.log`.
+- FACT: the targeted build completed successfully:
+  `#### build completed successfully (18:37 (mm:ss)) ####`.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images`.
+- Artifact identity:
+  - `boot.img` SHA-256:
+    `52ea754301ee0792bc489d535a7e81d3dffcce3906f5b3c9a433618baaa6e43e`.
+  - `recovery.img` SHA-256:
+    `61e42358e689182bd4bb1627f835b9de182d20715f76f53726a10e0b341e3162`.
+  - `vendor.img` SHA-256:
+    `85c4bbff83e5af0e3a21684daecbbd069534412d3a239a69bf1c215e1c4f852d`.
+  - `vendor.raw.img` SHA-256:
+    `61c5967bff6ed0161701279bde694f58a85af38ffcdf2c0c28ea30521cc13318`.
+  - `Image.gz-dtb` SHA-256:
+    `208ecf535fb16bc0341fca23fd214986e3281818532de67c08544bcc514b6b41`.
+  - `System.map` SHA-256:
+    `8c899387f999ece3e4573b50261f9fedffa0da84c9d5d55f941f0a3166e4427d`.
+  - `vmlinux` SHA-256:
+    `5f112cffc3f8f81c794f2bc857f080a563b5a52192fbd0c180ff2a4969d8716b`.
+- Validation:
+  `sha256sum -c SHA256SUMS` passed for all listed artifacts.
+  `vendor.raw.img` size is `300384256`, matching the known real `oem`
+  partition size. `e2fsck -fn vendor.raw.img` passed with
+  `vendor: 1342/73344 files (0.7% non-contiguous), 73070/73336 blocks`.
+- Flash helper:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images/flash-attempt152-from-codex-recovery.sh`.
+  The helper is executable, passed `bash -n`, refuses unless serial `30785d1a`
+  is in recovery, verifies `SHA256SUMS`, and refuses unless the `oem` partition
+  size is exactly `300384256` before writing `vendor.raw.img`.
+- Current status:
+  attempt152 has not been flashed yet. Preserve and inspect attempt151 pstore
+  first if `30785d1a` returns to recovery, then flash attempt152 from the
+  guarded helper if recovery remains reachable.
+
+2026-06-03 attempt151-to-attempt152 unattended chain:
+
+- Patch category: DIAGNOSTIC / AUTOMATION. This is runner infrastructure, not
+  a kernel proper-fix.
+- New scripts:
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt152-unattended.sh`:
+    flashes the attempt152 package from recovery, reboots, waits for Android
+    `device` or recovery, then captures either userspace component logs or
+    recovery-readable early markers. If the boot disappears past the wait
+    window, it waits for manual recovery and captures pstore then.
+    Before the attempt152 reboot it now snapshots and clears recovery pstore
+    and backs up `misc`; after userspace/recovery capture it restores that
+    `misc` backup where possible. Recovery-side restore is strict because a
+    stale recovery BCB can poison the next boot test.
+  - `/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt152.sh`:
+    waits for recovery, finishes the timed-out attempt151 run first, then
+    starts the attempt152 unattended run only after attempt151 pstore capture
+    succeeds.
+- Updated helper:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images/flash-attempt152-from-codex-recovery.sh`
+  now writes a runtime flash log and verifies partition-prefix SHA-256 for
+  `boot`, `recovery`, and `oem` after dd. Its output identity file is
+  `runtime/flash-attempt152-$RUN_ID/flash-identity.env`.
+- Validation:
+  `bash -n` passed for both new scripts and the updated attempt152 flash
+  helper, including the later pstore-clear/misc-restore hardening in
+  `nx549j-run-attempt152-unattended.sh`. `sha256sum -c SHA256SUMS` still
+  passed for the attempt152 package.
+- Active watcher:
+  the old `nx549j-attempt151-15038` tmux session was replaced by
+  `nx549j-chain151-152-15038`.
+- Active watcher command context:
+  `RUN_ID=20260603-130621-15038 ADB_HOST=127.0.0.1 ADB_PORT=15038
+  SERIAL=30785d1a POLL_SECONDS=5 BOOT_WAIT_SECONDS=420
+  MANUAL_RECOVERY_WAIT_SECONDS=0
+  scripts/nx549j-chain-attempt151-to-attempt152.sh`.
+- Active chain log:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images/runtime/wait-logs/chain-attempt151-to-152-20260603-130621-15038.log`.
+- Active finish log for attempt151:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images/runtime/wait-logs/finish-attempt151-20260603-130621-15038.log`.
+- Current live ADB state when the chain was started:
+  reverse ADB port `15038` was reachable but showed only non-target devices
+  `711HEBSR277K5` and `91HEBNL163XD`; serial `30785d1a` was still missing.
+- Expected next flow when `30785d1a` appears in recovery:
+  1. finish helper captures attempt151 pstore into the existing timed-out flash
+     directory:
+     `/srv/forge/work/nx549j-preserve/release-attempt151-20260603-raw-wdt-userspace120/runtime/flash-boot-bcb-20260603-121840-15038/after-manual-recovery-attempt151-before-152-20260603-130621-15038`;
+  2. attempt152 boot/recovery/vendor.raw are flashed and post-dd verified;
+  3. recovery pstore is snapshotted/cleared and `misc` is backed up before the
+     attempt152 reboot, so a later pstore capture should belong to attempt152
+     rather than attempt151;
+  4. the device is rebooted and watched for 420 seconds;
+  5. if Android `device` appears, broad userspace component logs are captured;
+     if recovery appears, early markers/pstore are captured; if neither
+     appears, the script waits indefinitely for manual recovery and captures
+     pstore then;
+  6. `misc` is restored after the capture when the current ADB state allows
+     block writes.
+- Rollback condition:
+  if this automation races with manual recovery work or the target appears on
+  a different ADB port, stop `nx549j-chain151-152-15038` and restart the same
+  chain with the correct `ADB_PORT`; no source/kernel rollback is required.
+
+2026-06-03T13:16Z live reverse ADB check:
+
+- Port `15038` is open and the remote ADB server responds.
+- Current visible devices are still only non-target Meizu serials
+  `711HEBSR277K5` and `91HEBNL163XD`; NX549J serial `30785d1a` is not visible
+  yet.
+- `nx549j-chain151-152-15038` remains the active watcher and is still waiting
+  for `30785d1a` before it captures attempt151 pstore and flashes attempt152.
+
+2026-06-03T13:21Z multiport reverse ADB watcher:
+
+- Patch category: DIAGNOSTIC / AUTOMATION. No kernel behavior change.
+- The single-port tmux watcher `nx549j-chain151-152-15038` was stopped and
+  replaced with `nx549j-multiport-chain151-152`.
+- Active command context:
+  `RUN_ID=20260603-132037-multiport ADB_HOST=127.0.0.1 ADB_PORT=15038
+  ADB_PORTS="15038 15032 15037" SERIAL=30785d1a POLL_SECONDS=5
+  WAIT_TUNNEL_SECONDS=0 BOOT_WAIT_SECONDS=420
+  MANUAL_RECOVERY_WAIT_SECONDS=0
+  ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt152.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images/runtime/wait-logs/watch-reverse-adb-20260603-132037-multiport.log`.
+- FACT: first preflight pass showed `TARGET_SERIAL_MISSING` on listeners
+  `15038` and `15032`; `15037` had `NO_REVERSE_LISTENER`.
+- Expected next flow is unchanged: the watcher starts the attempt151-to-152
+  chain only after `nx549j-check-reverse-adb.sh` reports
+  `TARGET_RECOVERY_READY` for exact serial `30785d1a`.
+
+2026-06-03 attempt153 systemimage delivery package:
+
+- Patch category: PROPER-FIX delivery artifact for system-side userspace files
+  already present in the LineageOS output tree. This is not a kernel behavior
+  change and it is not wired into the active attempt152 watcher.
+- Reason:
+  attempt152 contains boot/recovery/vendor only. Local audit showed DPM/shim
+  files such as `system/bin/dpmd`, `system/lib64/libshim_dpmframework.so`, and
+  `system/etc/init/dpmd.rc` exist under `out/target/product/nx549j/system`, but
+  there was no current `system.img` artifact to deliver them if the phone's
+  system partition is stale.
+- Build command:
+  `source build/make/envsetup.sh && lunch lineage_nx549j-userdebug &&
+  m systemimage -j1`.
+- Build log:
+  `/srv/forge/work/nx549j-preserve/build-attempt153-20260603-systemimage/build-rerun2.log`.
+- Build result:
+  completed successfully in `05:19` and produced
+  `out/target/product/nx549j/system.img`.
+- Release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt153-20260603-systemimage`.
+- Artifacts:
+  - sparse `system.img`, size `1611797012`, SHA-256
+    `eb563a14d64fcde6d93432cf8f9d26b2eb8255e99a586a2f8940c6ee9dfa628a`;
+  - raw `system.raw.img`, size `3221225472`, SHA-256
+    `93182b52d4bc76f5774efc21b1e1db1fb35b0165a6d7dabbdeeaa17edbce2220`.
+- Validation:
+  `sha256sum -c SHA256SUMS` passed for both images.
+  `/sbin/e2fsck -fn system.raw.img` passed with
+  `/: 4968/196608 files (0.3% non-contiguous), 405515/786432 blocks`.
+- Flash helper:
+  `/srv/forge/work/nx549j-preserve/release-attempt153-20260603-systemimage/flash-system-from-codex-recovery.sh`.
+  It passed `bash -n`, refuses non-`30785d1a`, refuses non-recovery state,
+  checks the model/device/product identity, checks the system partition size
+  is `3221225472`, streams raw ext4 to
+  `/dev/block/bootdevice/by-name/system` with `adb exec-in`, then verifies the
+  flashed partition by streaming it back through `adb exec-out | sha256sum`.
+- Current use rule:
+  keep this as the next delivery tool if fresh attempt152 runtime evidence
+  shows stale system-side DPM/shim/system files. Do not flash it merely to
+  change the early boot experiment unless a full image refresh is intentionally
+  being tested.
+
+2026-06-03 attempt154 full targeted flash flow:
+
+- Patch category: PROPER-FIX delivery automation. This changes the next flash
+  flow only; no kernel behavior is changed.
+- Reason:
+  the active attempt152 chain would test boot/recovery/vendor without the fresh
+  system-side fixes delivered by attempt153. That would leave a real risk of
+  re-testing stale `system/bin/dpmd`, `system/lib64/libshim_dpmframework.so`,
+  `system/etc/init/dpmd.rc`, and related system files while judging the current
+  ROM.
+- New release manifest:
+  `/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images/README.md`.
+- New scripts:
+  - `/srv/forge/android/nx549j/scripts/nx549j-run-attempt154-full-unattended.sh`
+    flashes attempt152 boot/recovery/vendor, then attempt153 system, then
+    snapshots/clears recovery pstore, backs up `misc`, reboots, waits for
+    userspace or recovery, captures logs/markers, and restores `misc`.
+  - `/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt154.sh`
+    waits for recovery, finishes the timed-out attempt151 pstore capture first,
+    then starts the full attempt154 runner.
+- Validation:
+  `bash -n` passed for both new scripts, and
+  `nx549j-run-attempt154-full-unattended.sh --help` prints the expected
+  attempt154/attempt152/attempt153 paths.
+- Active watcher:
+  `nx549j-multiport-chain151-152` was stopped and replaced by
+  `nx549j-multiport-chain151-154`.
+- Active command context:
+  `RUN_ID=20260603-134224-full ADB_HOST=127.0.0.1 ADB_PORT=15038
+  ADB_PORTS="15038 15032 15037" SERIAL=30785d1a POLL_SECONDS=5
+  WAIT_TUNNEL_SECONDS=0 BOOT_WAIT_SECONDS=420
+  MANUAL_RECOVERY_WAIT_SECONDS=0
+  ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt154.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images/runtime/wait-logs/watch-reverse-adb-20260603-134224-full.log`.
+- FACT: first preflight passes still show `TARGET_SERIAL_MISSING` on listeners
+  `15038` and `15032`; `15037` has `NO_REVERSE_LISTENER`.
+- Expected next flow when `30785d1a` appears in recovery:
+  1. capture attempt151 pstore before any new flash;
+  2. flash and verify attempt152 boot/recovery/vendor;
+  3. flash and verify attempt153 system;
+  4. clear stale recovery pstore and back up `misc`;
+  5. reboot and capture either userspace component logs or recovery markers.
+
+2026-06-03T13:47Z attempt154 rolling reverse ADB watcher:
+
+- Patch category: DIAGNOSTIC / AUTOMATION. No kernel, recovery, or image
+  behavior change.
+- Reason:
+  the first attempt154 watcher was started before the watcher script gained
+  `PREFLIGHT_ROLLING=1`; while target serial `30785d1a` was missing, it could
+  keep creating timestamped preflight directories. The old watcher was stopped
+  and restarted with rolling per-port preflight directories only.
+- Active session:
+  `nx549j-multiport-chain151-154`.
+- Active command context:
+  `RUN_ID=20260603-134654-full-rolling ADB_HOST=127.0.0.1 ADB_PORT=15038
+  ADB_PORTS="15038 15032 15037" SERIAL=30785d1a POLL_SECONDS=5
+  PREFLIGHT_ROLLING=1 WAIT_TUNNEL_SECONDS=0 BOOT_WAIT_SECONDS=420
+  MANUAL_RECOVERY_WAIT_SECONDS=0
+  ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt154.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images/runtime/wait-logs/watch-reverse-adb-20260603-134654-full-rolling.log`.
+- FACT:
+  first rolling preflight pass showed `TARGET_SERIAL_MISSING` on open
+  listeners `15038` and `15032`; `15037` still had `NO_REVERSE_LISTENER`.
+- FACT:
+  rolling preflight root contains only `port-15038-latest`,
+  `port-15032-latest`, and `port-15037-latest`.
+- Expected next flow remains unchanged: when exact serial `30785d1a` appears in
+  recovery, the chain captures attempt151 pstore first, then flashes and
+  verifies the full attempt154 targeted set.
+
+2026-06-03T13:53Z attempt154 watcher device-list logging:
+
+- Patch category: DIAGNOSTIC / AUTOMATION. No image flashing behavior changed.
+- File changed:
+  `/srv/forge/android/nx549j/scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Reason:
+  `TARGET_SERIAL_MISSING` alone was ambiguous when multiple reverse ADB servers
+  were open. The watcher now logs a compact `devices=serial:state,...` field
+  from each port's `adb devices -l` result, filtered to real ADB states only.
+- Validation:
+  `bash -n scripts/nx549j-watch-reverse-adb-and-run-latest.sh` passed.
+- Active session:
+  `nx549j-multiport-chain151-154`.
+- Active command context:
+  `RUN_ID=20260603-135238-full-rolling-devices2 ADB_HOST=127.0.0.1
+  ADB_PORT=15038 ADB_PORTS="15038 15032 15037" SERIAL=30785d1a
+  POLL_SECONDS=5 PREFLIGHT_ROLLING=1 WAIT_TUNNEL_SECONDS=0
+  BOOT_WAIT_SECONDS=420 MANUAL_RECOVERY_WAIT_SECONDS=0
+  ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-chain-attempt151-to-attempt154.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt154-20260603-full-targeted-images/runtime/wait-logs/watch-reverse-adb-20260603-135238-full-rolling-devices2.log`.
+- FACT:
+  first pass showed `15038` listener present with
+  `devices=711HEBSR277K5:device,91HEBNL163XD:device`,
+  `15032` listener present with
+  `devices=L91HVCNS22KS5:device,ZY32LLVPXR:device`, and `15037`
+  `NO_REVERSE_LISTENER` with `devices=none`.
+- Current blocker:
+  exact NX549J serial `30785d1a` is still absent from every reverse ADB port,
+  so attempt154 has not started and no new runtime evidence exists yet.
+
+2026-06-03T14:46Z attempt154/156 system delivery evidence:
+
+- Patch category: PROPER-FIX delivery fix plus DIAGNOSTIC/AUTOMATION resume
+  tooling.
+- FACT:
+  attempt154 found exact serial `30785d1a` in recovery on reverse ADB port
+  `15038`, captured/finished attempt151 pstore/misc first, then flashed and
+  verified attempt152 boot/recovery/vendor:
+  - boot SHA-256:
+    `52ea754301ee0792bc489d535a7e81d3dffcce3906f5b3c9a433618baaa6e43e`;
+  - recovery SHA-256:
+    `61e42358e689182bd4bb1627f835b9de182d20715f76f53726a10e0b341e3162`;
+  - vendor raw SHA-256:
+    `61c5967bff6ed0161701279bde694f58a85af38ffcdf2c0c28ea30521cc13318`.
+- FACT:
+  attempt154 system delivery refused before writing because recovery reported
+  `/dev/block/bootdevice/by-name/system` size `4294967296`, while the attempt153
+  helper expected `3221225472`.
+- Source fix:
+  `device/nubia/msm8953-common/BoardConfigCommon.mk` and
+  `device/nubia/nx549j/BoardConfig.mk` now set
+  `BOARD_SYSTEMIMAGE_PARTITION_SIZE := 4294967296`.
+- Build note:
+  a direct `m systemimage -j1` rebuild was started in
+  `/srv/forge/work/nx549j-preserve/build-attempt155-20260603-systemimage-4g`,
+  but the host entered severe block I/O wait (`ckati` in `ext4_read_bh` /
+  `rq_qos_wait`, load average around 70-80). The agent stopped its own stuck
+  build session to avoid adding more I/O pressure.
+- Artifact fix:
+  `/srv/forge/work/nx549j-preserve/release-attempt155-20260603-systemimage-4g`
+  contains a 4GiB `system.raw.img` made by sparse-copying the verified attempt153
+  raw image, truncating to `4294967296`, and running `resize2fs`.
+- attempt155 system raw identity:
+  - size: `4294967296`;
+  - filesystem block count: `1048576`;
+  - filesystem block size: `4096`;
+  - SHA-256:
+    `c57ccae87455a9d45608da7452ecd047579ee429af1cb5213c717d1c24067aaf`;
+  - `/sbin/e2fsck -fn` result: clean,
+    `/: 4968/262144 files (0.3% non-contiguous), 409641/1048576 blocks`.
+- Flash helper fix:
+  `release-attempt155-20260603-systemimage-4g/flash-system-from-codex-recovery.sh`
+  now expects system size `4294967296`, checks SHA
+  `c57ccae87455a9d45608da7452ecd047579ee429af1cb5213c717d1c24067aaf`, verifies
+  the full partition hash on-device with `dd ... | sha256sum` instead of
+  streaming 4GiB back over USB, and supports `VERIFY_ONLY=1`.
+- Runner fix:
+  `/srv/forge/android/nx549j/scripts/nx549j-run-attempt154-full-unattended.sh`
+  now supports `SKIP_BOOT_VENDOR_FLASH=1` and `SYSTEM_VERIFY_ONLY=1` for resume
+  after a USB drop.
+- attempt156:
+  `/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g`
+  re-used attempt152 boot/recovery/vendor plus attempt155 4GiB system.
+- FACT:
+  attempt156 wrote the 4GiB system image from `14:37:00Z` until the helper
+  reached `stream-verify-start` at `14:46:14Z`; this means the write phase
+  completed, but the old helper then attempted USB readback verification.
+- Current blocker:
+  at `14:46:14Z`, USB/ADB went `device offline` exactly when full readback
+  verification started. The system partition write is therefore likely complete
+  but not identity-verified yet.
+- Active resume watcher:
+  `nx549j-attempt156-resume-watch`.
+- Active resume watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g/runtime/wait-logs/watch-reverse-adb-20260603-145100-attempt156-resume-verify.log`.
+- Resume command context:
+  `RUN_ID=20260603-145100-attempt156-resume-verify ADB_HOST=127.0.0.1
+  ADB_PORT=15038 ADB_PORTS="15038 15032 15037" SERIAL=30785d1a
+  PREFLIGHT_ROLLING=1 ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g
+  BOOT_VENDOR_DIR=/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images
+  SYSTEM_DIR=/srv/forge/work/nx549j-preserve/release-attempt155-20260603-systemimage-4g
+  SKIP_BOOT_VENDOR_FLASH=1 SYSTEM_VERIFY_ONLY=1
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-run-attempt154-full-unattended.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Expected next flow:
+  when `30785d1a` returns as `recovery`, the watcher should run verify-only
+  system SHA on the device, then snapshot/clear pstore, reboot, and capture
+  userspace logs or recovery markers.
+
+2026-06-03T14:56Z attempt156 offline reconnect watcher:
+
+- Patch category: DIAGNOSTIC / AUTOMATION. No image write behavior changed.
+- File changed:
+  `/srv/forge/android/nx549j/scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Reason:
+  after the 4GiB system write completed, the old helper started a 4GiB USB
+  readback verify and the target fell to `offline`. A passive watcher would
+  wait forever even if the remote ADB server only needed a reconnect.
+- Change:
+  the watcher now supports `RECONNECT_OFFLINE=1`; when the target serial is
+  visible as `offline`, it runs `adb -H $ADB_HOST -P $port reconnect offline`
+  and records the output path.
+- Validation:
+  `bash -n scripts/nx549j-watch-reverse-adb-and-run-latest.sh` passed.
+- Active resume watcher:
+  `nx549j-attempt156-resume-watch`.
+- Active command context:
+  `RUN_ID=20260603-150000-attempt156-resume-reconnect ADB_HOST=127.0.0.1
+  ADB_PORT=15038 ADB_PORTS="15038 15032 15037" SERIAL=30785d1a
+  POLL_SECONDS=5 PREFLIGHT_ROLLING=1 RECONNECT_OFFLINE=1
+  ATTEMPT_DIR=/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g
+  BOOT_VENDOR_DIR=/srv/forge/work/nx549j-preserve/release-attempt152-20260603-current-targeted-images
+  SYSTEM_DIR=/srv/forge/work/nx549j-preserve/release-attempt155-20260603-systemimage-4g
+  SKIP_BOOT_VENDOR_FLASH=1 SYSTEM_VERIFY_ONLY=1
+  RUNNER=/srv/forge/android/nx549j/scripts/nx549j-run-attempt154-full-unattended.sh
+  scripts/nx549j-watch-reverse-adb-and-run-latest.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g/runtime/wait-logs/watch-reverse-adb-20260603-150000-attempt156-resume-reconnect.log`.
+- FACT:
+  the watcher is issuing `reconnecting 30785d1a`, but direct ADB still reports
+  `30785d1a offline` on port `15038`; ports `15032` and `15037` do not expose
+  the target.
+- Current blocker:
+  target USB/ADB transport is still offline after the completed system write.
+  A physical USB reconnect or reboot back to recovery is likely needed. The
+  watcher is already armed to resume with verify-only and no repeat 4GiB write.
+
+2026-06-03T15:02Z attempt156 offline retry status:
+
+- Patch category: DIAGNOSTIC / AUTOMATION status only. No image behavior
+  changed.
+- FACT:
+  active watcher `nx549j-attempt156-resume-watch` still sees
+  `30785d1a:offline` on reverse ADB port `15038`; ports `15032` and `15037`
+  do not expose the target.
+- FACT:
+  repeated `adb reconnect offline` attempts return status `0` and print
+  `reconnecting 30785d1a`, but the target stays `offline`.
+- FACT:
+  manual `adb -H 127.0.0.1 -P 15038 reconnect device` also returned success
+  status but left `30785d1a` in `offline` state.
+- Current blocker:
+ the host cannot make further device progress until the physical USB/ADB
+ transport is reset or the phone is rebooted back to recovery. The active
+ watcher remains armed and will resume with `SKIP_BOOT_VENDOR_FLASH=1` and
+  `SYSTEM_VERIFY_ONLY=1` when `30785d1a` becomes `recovery` again.
+
+2026-06-03T16:10Z attempt156 direct resume / verified raw system reflash:
+
+- Patch category: DIAGNOSTIC / AUTOMATION status only. No kernel/image source
+  changed in this step.
+- Recovery return:
+  `30785d1a` returned on reverse ADB port `15038` as `recovery`; the previous
+  tmux watcher was gone (`tmux list-sessions` reported no server), so a direct
+  resume was started.
+- Direct verify-only run:
+  `RUN_ID=20260603-152835-attempt156-direct-resume` with
+  `SKIP_BOOT_VENDOR_FLASH=1 SYSTEM_VERIFY_ONLY=1`.
+- Direct verify-only result:
+  the 4GiB system partition full-block SHA was
+  `fd2eb50dd96595581ded0137263debcbb63405b9f9040b26ff43820d11147670`, not the
+  expected raw SHA
+  `c57ccae87455a9d45608da7452ecd047579ee429af1cb5213c717d1c24067aaf`.
+- Interpretation:
+  the earlier completed write could not be treated as identity-verified. Note
+  that sparse-image flashing can leave DONT_CARE/free blocks with non-zero old
+  contents, so full-block SHA is stricter than filesystem validity; however this
+  run needed deterministic raw identity before reboot testing.
+- Reflash run:
+  `RUN_ID=20260603-153255-attempt156-reflash-system` with
+  `SKIP_BOOT_VENDOR_FLASH=1 SYSTEM_VERIFY_ONLY=0`, using the same
+  `release-attempt155-20260603-systemimage-4g/system.raw.img`.
+- Reflash evidence:
+  `stream-flash-start` at `2026-06-03T15:34:02Z`; host fd progress reached the
+  end of the 4GiB image; `device-local-verify-start` at `16:00:36Z`;
+  `system-flashed-and-verified` at `16:01:55Z`.
+- Verified system evidence:
+  `/srv/forge/work/nx549j-preserve/release-attempt155-20260603-systemimage-4g/runtime/flash-system-4g-20260603-153255-attempt156-reflash-system/flash-system.log`.
+- Reboot evidence:
+  the runner backed up misc, rebooted at `16:01:59Z`, waited 420 seconds, and
+  timed out at `16:09:04Z` with only `poll state=missing` for `30785d1a`.
+- Active wait:
+  tmux session `nx549j-attempt156-reflash-system` is now in the
+  `manual-recovery` wait loop (`MANUAL_RECOVERY_WAIT_SECONDS=0`). It will
+  capture recovery markers and restore misc automatically when the user returns
+  the phone to recovery.
+- Active log:
+  `/srv/forge/work/nx549j-preserve/release-attempt156-20260603-full-targeted-system4g/runtime/wait-logs/attempt154-full-unattended-20260603-153255-attempt156-reflash-system.log`.
+- Current blocker:
+  after a fully verified raw 4GiB `system` flash, the phone does not enumerate
+  as ADB `device` or `recovery` within 420 seconds. Need manual recovery return
+  to collect pstore/early markers from this verified-system boot attempt.
+
+2026-06-04T22:58Z attempt157 charger / battery-data source restore:
+
+- Patch category: PROPER-FIX / POWER-DT source restore.
+- Trigger:
+  the user reported the phone likely stopped charging and disappeared twice due
+  to battery level while being moved back to recovery.
+- FACT:
+  the latest available preboot pstore from attempt156 only showed normal
+  shutdown callbacks for `qcom,qpnp-fg`, `qpnp-smbcharger`, and `qpnp-typec`;
+  it did not contain a direct "charging disabled" charger failure.
+- FACT:
+  current 4.9 `.config` and `lineageos_nx549j_defconfig` both enable
+  `CONFIG_QPNP_FG=y`, `CONFIG_QPNP_SMBCHARGER=y`, `CONFIG_QPNP_TYPEC=y`,
+  PMIC revid, ADC, and thermal support, so this was not a missing-driver
+  config issue.
+- FACT:
+  stock/highwaystar NX549 DTS uses
+  `NX549/batterydata-ztemt-4v4-3000mah.dtsi` with `qcom,batt-id-kohm = <47>`
+  and `qcom,max-voltage-uv = <4400000>`, but the 4.9 NX549 DTS was still using
+  generic `batterydata-itech-3000mah.dtsi` and `batterydata-ascent-3450mAh.dtsi`
+  profiles (`100k`/`60k`, 4.35V).
+- Change:
+  added `arch/arm64/boot/dts/qcom/nx549j/batterydata-ztemt-4v4-3000mah.dtsi`
+  from the stock NX549 source and switched `msm8953-mtp-nx549j.dts`
+  `mtp_batterydata` to include only that NX549 profile.
+- Type-C note:
+  stock NX549 deletes `qcom,ssmux-gpio` and related pinctrl because ssmux GPIO
+  conflicts with Nubia Synaptics touch. The 4.9 NX549 DTB does not contain that
+  GPIO/pinctrl path, only `ss-mux-supply`, so no Type-C GPIO change was made in
+  this attempt.
+- Build:
+  `source build/make/envsetup.sh && lunch lineage_nx549j-userdebug &&
+  mka bootimage -j4` completed successfully in `05:53`.
+- Verification:
+  `git diff --check` passed; decompiled DTB contains
+  `qcom,batt-id-kohm = <0x2f>`, `qcom,max-voltage-uv = <0x432380>`, and
+  `qcom,battery-type = "ztemt_lg_3000mah"`.
+- Release:
+  `/srv/forge/work/nx549j-preserve/release-attempt157-20260604-batterydata-ztemt`
+- Artifact SHA-256:
+  - `boot-batterydata-ztemt.img`:
+    `bda1e9e9eea62d7df5a6c648c450722d4ac190657cf716277ef41909c97f8180`
+  - `Image.gz-dtb`:
+    `21d5842ca3da84a757df47da2280f9cb776858894a1ba9c7ae31ce2b14520d34`
+  - `msm8953-mtp-nx549j.dtb`:
+    `51ce8b893e98e2053ed46ba131d3ab9c876b3a12e35d53bf9e696a02b0eb3b9f`
+- FACT:
+  `sha256sum -c SHA256SUMS` passed in the release directory.
+- Current device state:
+  reverse ADB port `15038` currently exposes other devices
+  (`711HEBSR277K5`, `91HEBNL163XD`) but not NX549J `30785d1a`; ports `15030`,
+  `15031`, and `15034` also did not expose the NX549J target during this pass.
+- Next when `30785d1a` returns to recovery:
+  collect `/sys/class/power_supply/*` and charger/typec/fg dmesg before
+  rebooting, then flash `boot-batterydata-ztemt.img` to the boot partition and
+  retest whether USB/charge stability improves.
+- Automation:
+  added `scripts/nx549j-run-attempt157-batterydata.sh`. It refuses non-NX549J
+  serials, requires recovery, captures `power_supply`, charger/typec/fg dmesg,
+  and then delegates to `nx549j-flash-boot-with-bcb-fallback.sh`.
+- Active watcher:
+  tmux session `nx549j-attempt157-batterydata-watch` is scanning ports
+  `15038 15031 15034 15030` with exact serial gate `30785d1a` and runner
+  `scripts/nx549j-run-attempt157-batterydata.sh`.
+- Active watcher log:
+  `/srv/forge/work/nx549j-preserve/release-attempt157-20260604-batterydata-ztemt/runtime/wait-logs/watch-reverse-adb-20260604-2258-attempt157-batterydata.log`.
+- Watcher first-cycle evidence:
+  `15038` had only `711HEBSR277K5` and `91HEBNL163XD`; `15031` had only
+  `L91HVCNS22KS5`; `15034` and `15030` had no ADB devices. The watcher reported
+  `TARGET_SERIAL_MISSING` / `NO_ADB_DEVICES` and did not write to any device.
