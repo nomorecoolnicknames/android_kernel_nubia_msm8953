@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T09:09:45-05:00
+Last updated: 2026-06-07T12:47:08-05:00
 
 ## Objective
 
@@ -31,6 +31,101 @@ persistence path.
 - Preserved 4.9 artifacts:
   - `/srv/forge/work/nx549j-preserve/Image.gz-dtb-nx549j-4.9`
   - `/srv/forge/work/nx549j-preserve/nx549j-boot-test-01.img`
+
+## 2026-06-07 attempt165 full ROM release candidate / flash gate
+
+Patch category: RELEASE-CANDIDATE / FULL-ROM / FLASH-GATED.
+
+Facts:
+- Kernel repo HEAD at this note:
+  `da266e3f5 nx549j: checkpoint attempt163 hardware bringup`.
+- attempt165 release directory:
+  `/srv/forge/work/nx549j-preserve/release-attempt165-20260607-clean-source-full-rom-dpmd-rootfc-ztemt-battid460/`
+- Build incremental:
+  `nx549j_attempt165_20260607_113349`.
+- Expected runtime identity:
+  - `ro.lineage.version=18.1-20260607-UNOFFICIAL-nx549j`
+  - `ro.system.build.version.incremental=nx549j_attempt165_20260607_113349`
+  - `ro.vendor.build.version.incremental=nx549j_attempt165_20260607_113349`
+- Artifact SHA-256:
+  - final OTA `lineage-18.1-20260607-UNOFFICIAL-nx549j.zip`:
+    `43fb2c525b047faaf2054b165ddff6f0de1cac30285c95c13bf804a379d68676`
+  - `boot.img`:
+    `db2024042a4805e732cb16dc8d0f9c8ac22310cba2f593854348822cf1f2baf4`
+  - `fastboot-system.img`:
+    `d2ddb69361387b3830a75779da95c916d4812fdc251a8bc82ed226826867a418`
+  - `fastboot-vendor.img`:
+    `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
+  - release `SHA256SUMS`:
+    `b2d7b3f183da8ee2e8c6a0c340ff372efb00d0a3dea13e0f04a27be1ddc7d7c5`
+
+Static release evidence:
+- `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
+  the attempt165 kernel/`Image.gz-dtb`, and its strings include
+  `ztemt_lg_3000mah` and `qcom,batt-id-kohm`.
+- `STATIC_RUNTIME_AUDIT.md` in the release directory records the dpmd/DPM,
+  netmgr/location, and camera artifacts, init declarations, VINTF entries, and
+  SELinux labels present in the target files.
+- `PREFLASH_SIGNATURE_COMPARISON.md` compares the currently running old system
+  against attempt165 and records that old dpmd was labeled `system_file` while
+  attempt165 labels `/system/bin/dpmd` as `vendor_dpmd_exec`.
+- `ATTEMPT165_FLASH_ROLLBACK_RUNBOOK.md` records the no-wipe flash command,
+  postflash capture path, incomplete-ADB behavior, and rollback command.
+
+Current connected-device state before any attempt165 flash:
+- `adb devices -l` sees exact target serial `30785d1a` in Android userspace.
+- The phone is still running the old working build:
+  - `ro.lineage.version=18.1-20260603-UNOFFICIAL-nx549j`
+  - `ro.system.build.version.incremental=eng.n8n.20260603.073227`
+  - `ro.vendor.build.version.incremental=eng.n8n.20260603.073227`
+- The old runtime still shows:
+  - `init.svc.dpmd=restarting`
+  - `init.svc.vendor.netmgrd=restarting`
+  - `init.svc.loc_launcher=restarting`
+- Therefore attempt165 is not runtime-proven yet.
+
+Flash readiness:
+- Latest read-only command:
+  `./flash-attempt165-fastboot-nowipe.sh --preflight-only`
+- Result:
+  passed after release helper/runbook updates.
+- Preflight verified all release checksums, exact ADB identity
+  `serial=30785d1a`, `/vendor` mounted from `/dev/block/mmcblk0p31`, and image
+  sizes:
+  - `boot.img` 12941312 fits boot 41943040
+  - `recovery.img` 21594112 fits recovery 41943040
+  - `fastboot-system.img` 1611813444 fits system 4294967296
+  - `fastboot-vendor.img` 280854676 fits oem 300384256
+- Important partition mapping:
+  physical by-name `vendor` is absent; runtime `/vendor` is physical `oem`.
+  Fastboot must flash the vendor image to `oem`, not `vendor`.
+
+Gated no-wipe flash command:
+```sh
+cd /srv/forge/work/nx549j-preserve/release-attempt165-20260607-clean-source-full-rom-dpmd-rootfc-ztemt-battid460
+./run-attempt165-nowipe-and-capture.sh --write-partitions
+```
+
+Rollback backup:
+- Verified known-working backup directory:
+  `/srv/forge/work/nx549j-preserve/backups/current-working-pre-attempt164-20260607_111715`
+- `sha256sum -c SHA256SUMS` passed.
+- `gzip -t boot.img.gz recovery.img.gz system.img.gz oem.img.gz` passed.
+- Restore helper refuses to write without `--write-partitions`.
+- Restore command, no userdata wipe:
+```sh
+cd /srv/forge/work/nx549j-preserve/backups/current-working-pre-attempt164-20260607_111715
+./restore-current-working-fastboot-nowipe.sh --write-partitions
+```
+
+Next runtime proof required:
+- Flash attempt165 with the gated no-wipe helper only after explicit user
+  confirmation.
+- Confirm the system/vendor incrementals match
+  `nx549j_attempt165_20260607_113349`.
+- Recheck battery profile `ztemt_lg_3000mah` and resistance id `460600`.
+- Recheck `dpmd`, `vendor.netmgrd`, `loc_launcher`, and camera provider from
+  the postflash capture before making the next source patch.
 
 ## 2026-06-07 attempt161 full ROM build with ZTEMT batt-id 460
 
