@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:22:41-05:00
+Last updated: 2026-06-07T13:31:56-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `2bb768d416ea59e23a6c1ae1f263b345259a1a87e3d758133edf7c4b1f6a849f`
+    `24769633b24793fac7dad17308ee5efe9f641e74f9e7aaa28e492556d0f9381f`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -112,6 +112,12 @@ Static release evidence:
     `e2fsck -fn`
   - `fastboot-vendor.img` expands to `300384256` bytes and passes
     `e2fsck -fn`
+- `RELEASE_ARTIFACT_CONSISTENCY.md` records that standalone fastboot images,
+  target-files `IMAGES/*`, the OTA embedded `boot.img`, and OTA metadata all
+  agree on the same attempt165 artifact set. SHA-256:
+  `499fd17ff2a83a4abdd6124c55fa0879cc54ff57b66581ee71346606e51be342`.
+- Release `README.md` SHA-256 after the consistency-audit reference update:
+  `0f912545badf86044dc7fe417d5684dfdb19e9ed4cb242c37c503f684cd192d9`.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
@@ -120,6 +126,9 @@ Static release evidence:
 
 Current connected-device state before any attempt165 flash:
 - `adb devices -l` sees exact target serial `30785d1a` in Android userspace.
+- After the user reconnected the cable, `adb devices -l` still sees
+  `30785d1a` in Android userspace and `fastboot devices -l` is empty; the
+  phone has not been rebooted to bootloader by the helper.
 - The phone is still running the old working build:
   - `ro.lineage.version=18.1-20260603-UNOFFICIAL-nx549j`
   - `ro.system.build.version.incremental=eng.n8n.20260603.073227`
@@ -146,7 +155,8 @@ Flash readiness:
 - Latest read-only command:
   `./flash-attempt165-fastboot-nowipe.sh --preflight-only`
 - Result:
-  passed after release helper/runbook/capture updates.
+  passed after release helper/runbook/capture updates and again after the
+  cable reconnect at `2026-06-07T13:31:56-05:00`.
 - Preflight verified all release checksums, recorded expected partition sizes,
   exact ADB identity
   `serial=30785d1a`, `/vendor` mounted from `/dev/block/mmcblk0p31`, and image
