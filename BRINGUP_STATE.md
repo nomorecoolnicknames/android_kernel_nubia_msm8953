@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T13:07:25-05:00
+Last updated: 2026-06-07T13:11:39-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `a734ddb58256d40b14b7ffb1264f5b7deeb2e1ca88594d00d6b4693849e78fca`
+    `e66a414ff1435d40247d497c935e50992513441f6a0e9fa2da55eaa10dd87ead`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -93,6 +93,11 @@ Static release evidence:
   `cddc1396c4defd1a3b7d26c16d896cb441973bd5c63644565cc6e17d6e84265a`.
 - The run helper now writes `run_verdict.txt` into each flash-run directory and
   embeds it in `run_summary.txt` after postflash capture.
+- `flash-attempt165-fastboot-nowipe.sh` now validates local image sizes against
+  recorded NX549J partition sizes before the ADB-dependent checks. This keeps
+  the size guard active even if the phone is already in fastboot and Android
+  ADB is unavailable. SHA-256:
+  `0ddb949a6fe393a32ffac42d5d6ff4d19eed71288961ab0daa7b933ec4be9d46`.
 - Updated `capture-attempt165-postflash.sh` SHA-256:
   `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
   This version captures multi-command Android shell snippets as a single
@@ -128,7 +133,8 @@ Flash readiness:
   `./flash-attempt165-fastboot-nowipe.sh --preflight-only`
 - Result:
   passed after release helper/runbook/capture updates.
-- Preflight verified all release checksums, exact ADB identity
+- Preflight verified all release checksums, recorded expected partition sizes,
+  exact ADB identity
   `serial=30785d1a`, `/vendor` mounted from `/dev/block/mmcblk0p31`, and image
   sizes:
   - `boot.img` 12941312 fits boot 41943040
