@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T12:47:08-05:00
+Last updated: 2026-06-07T12:53:25-05:00
 
 ## Objective
 
@@ -57,7 +57,7 @@ Facts:
   - `fastboot-vendor.img`:
     `b121087c98023f6494a743375b1f9060d8232875a758d3dc18d6e7a00ffcd5f7`
   - release `SHA256SUMS`:
-    `b2d7b3f183da8ee2e8c6a0c340ff372efb00d0a3dea13e0f04a27be1ddc7d7c5`
+    `2b7a2ad8739928b76fc53fb0b7b5e860976d16f689baed8b22037417ac4079a5`
 
 Static release evidence:
 - `BOOT_IMAGE_AUDIT.md` in the release directory proves the boot image embeds
@@ -71,6 +71,11 @@ Static release evidence:
   attempt165 labels `/system/bin/dpmd` as `vendor_dpmd_exec`.
 - `ATTEMPT165_FLASH_ROLLBACK_RUNBOOK.md` records the no-wipe flash command,
   postflash capture path, incomplete-ADB behavior, and rollback command.
+- Updated `capture-attempt165-postflash.sh` SHA-256:
+  `99d3a78a38b0e9215b621b31682453938afec3623115a52c2a0c5364723ceac0`.
+  This version captures multi-command Android shell snippets as a single
+  `adb shell` command string so targeted service, battery, binary-context, and
+  VINTF files are populated instead of failing with `unexpected 'do'`.
 
 Current connected-device state before any attempt165 flash:
 - `adb devices -l` sees exact target serial `30785d1a` in Android userspace.
@@ -83,12 +88,24 @@ Current connected-device state before any attempt165 flash:
   - `init.svc.vendor.netmgrd=restarting`
   - `init.svc.loc_launcher=restarting`
 - Therefore attempt165 is not runtime-proven yet.
+- Fresh current-runtime capture after the capture-helper fix:
+  `/srv/forge/work/nx549j-preserve/captures/pre-attempt165-current-runtime-refresh-fixed/attempt165-postflash-20260607_125139`
+- The fixed capture has populated targeted files and no `capture_errors.txt`.
+  It confirms:
+  - old build identity is still `18.1-20260603-UNOFFICIAL-nx549j` with
+    system/vendor incrementals `eng.n8n.20260603.073227`
+  - battery profile is already `ztemt_lg_3000mah`, resistance id `460600`
+  - `targeted_service_props.txt` reports `dpmd`, `loc_launcher`, and
+    `vendor.netmgrd` as `restarting`
+  - `/system/bin/dpmd` is labeled `u:object_r:system_file:s0` on the old
+    runtime, while the attempt165 release labels it `vendor_dpmd_exec`
+  - camera provider still reports `Number of camera devices: 0`
 
 Flash readiness:
 - Latest read-only command:
   `./flash-attempt165-fastboot-nowipe.sh --preflight-only`
 - Result:
-  passed after release helper/runbook updates.
+  passed after release helper/runbook/capture updates.
 - Preflight verified all release checksums, exact ADB identity
   `serial=30785d1a`, `/vendor` mounted from `/dev/block/mmcblk0p31`, and image
   sizes:
