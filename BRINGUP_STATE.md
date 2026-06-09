@@ -8226,3 +8226,44 @@ Final packaged artifact for this batch:
 - Expected next marker: next camera capture should no longer show the
   `parm_base + 0x6398` MCT crash; if camera still fails, continue from the
   first post-`QUERY_CAP` ACK blocker.
+
+2026-06-08T23:31-05:00 attempt246/247 camera sensor-module waitfix result:
+
+- Patch category: PROPER-FIX / CAMERA proprietary sensor-module timeout fix.
+- attempt246 live blob:
+  `/srv/forge/work/nx549j-preserve/attempt246-sensor-fc-waitfix/libmmcamera2_sensor_modules.query_waitfix.eeprom_flash_actuator_optional.fc_waitfix.so`
+  SHA-256 `8ee64b8f01dfbb1b18cb706e6d0ece634d5475a925bc11bbf11b63173c8d5be9`.
+- attempt246 evidence:
+  `/srv/forge/work/nx549j-preserve/captures/attempt246-sensor-fc-waitfix-live-20260608-232331`
+  booted camera services without new tombstones and kept `Number of camera
+  devices: 2`, but still logged `module_sensor_init_session: fatal open
+  config done fail 0` and `camera_v4l2_open : NEW_SESSION event failed,rc -110`.
+- attempt247 live blob:
+  `/srv/forge/work/nx549j-preserve/attempt247-sensor-init-session-waitfix/libmmcamera2_sensor_modules.attempt247.so`
+  SHA-256 `174c5e1a9aaf7ab22002fd8c1d2e498b494deefa86540e0c6e8e98b80ae52de9`;
+  SHA-1 `bc5851d010db2490f3011e68aeae1912ec297dca`.
+- Binary patch summary:
+  in addition to the prior query/eeprom/flash/actuator/sensor_fc fixes,
+  `module_sensor_init_session` offset `0x1b79e` now loads `tv_sec` from
+  `sp+0x38` instead of `tv_nsec` from `sp+0x3c`, offset `0x1b7a8` stores back
+  to `sp+0x38`, and literal `0x1ba4c` is `1` instead of `0x1dcd6500`.
+  This avoids invalid `pthread_cond_timedwait` timespecs from `tv_nsec + 0.5s`.
+- attempt247 evidence:
+  `/srv/forge/work/nx549j-preserve/captures/attempt247-sensor-init-session-waitfix-live-20260608-232933`
+  has no `Fatal signal`, no new tombstone after 16:57, no `fatal open config
+  done`, no `NEW_SESSION event failed`, no `module_sensor_init_session: failed`,
+  and no MCT `New session` failure in the fresh log. `dumpsys media.camera`
+  reports 2 devices and logcat shows `openCamera ... camera id 0, rc: 0` and
+  `openCamera ... camera id 1, rc: 0`.
+- Current remaining camera blocker:
+  the fresh log still reports missing optional imglib libraries
+  `libmmcamera_paaf_lib.so`, `libmmcamera_optizoom_lib.so`,
+  `libmmcamera_trueportrait_lib.so`, and `libmmcamera_stillmore_lib.so`, plus
+  `sensor_get_cur_chromatix_name_for_type ... module = 4 ... is NULL`.
+  Continue from those runtime errors; do not reintroduce the old timedwait
+  workaround or the broader attempt241 query bypass.
+- Source persistence:
+  local ROM vendor blob
+  `vendor/nubia/nx549j/proprietary/vendor/lib/libmmcamera2_sensor_modules.so`
+  was updated to attempt247, and
+  `device/nubia/nx549j/proprietary-files.txt` now records the attempt247 SHA-1.
