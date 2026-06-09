@@ -17,7 +17,7 @@
 #include "pmi8950.dtsi"
 #include "msm8953-pmi8950.dtsi"
 #include "msm8953-mtp.dtsi"
-#include "msm8953-camera-sensor-mtp.dtsi"
+#include "nx549j/msm8953-camera-sensor-nx549j.dtsi"
 #include "msm8953-mdss-panels-nx549j.dtsi"
 #include "msm8953-pinctrl-nx549j.dtsi"
 #include "nx549j/msm8953-nubia-common-nx549j.dtsi"
@@ -147,11 +147,14 @@
 	};
 };
 
-/* Broadcom BCM2079x NFC on i2c_5: IRQ=17, EN=16, WAKE=87. */
 &i2c_5 {
 	#address-cells = <1>;
 	#size-cells = <0>;
+	qcom,noise-rjct-scl = <3>;
+	qcom,noise-rjct-sda = <3>;
 	status = "ok";
+
+	/delete-node/ nq@28;
 
 	broadcom_bcm2079x_nfc@77 {
 		compatible = "broadcom,bcm2079x_nfc";
@@ -162,11 +165,13 @@
 		interrupt-parent = <&tlmm>;
 		interrupts = <17 0>;
 		interrupt-names = "BRCM_NFC_INT";
-		pinctrl-names = "nfc_active", "nfc_suspend";
-		pinctrl-0 = <&bcm2079x_int_active &bcm2079x_en_active &bcm2079x_ctl_active>;
-		pinctrl-1 = <&bcm2079x_int_active &bcm2079x_en_active &bcm2079x_ctl_active>;
+		pinctrl-names = "bcm2079x_pin_active", "bcm2079x_pin_suspend";
+		pinctrl-0 = <&bcm2079x_int_active &bcm2079x_en_active
+				&bcm2079x_ctl_active>;
+		pinctrl-1 = <&bcm2079x_int_suspend &bcm2079x_en_suspend
+				&bcm2079x_ctl_suspend>;
 		broadcom,clk-gpio = <&pm8953_gpios 2 0x00>;
-		clocks = <&clock_gcc clk_bb_clk2_pin>;
+		clocks = <&clock_gcc clk_bb_clk2>;
 		clock-names = "ref_clk";
 	};
 };
@@ -230,6 +235,8 @@
 				"tlmm_gpio_key_suspend";
 		pinctrl-0 = <&gpio_key_active>;
 		pinctrl-1 = <&gpio_key_suspend>;
+
+		/delete-node/ camera_focus;
 
 		vol_up {
 			label = "volume_up";

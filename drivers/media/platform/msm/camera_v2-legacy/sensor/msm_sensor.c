@@ -261,17 +261,32 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		return -EINVAL;
 	}
 
+	pr_err("NX549J camera diag: match_id start sensor=%s slave=0x%x reg=0x%x expected=0x%x mask=0x%x\n",
+		sensor_name, slave_info->sensor_slave_addr,
+		slave_info->sensor_id_reg_addr, slave_info->sensor_id,
+		slave_info->sensor_id_mask);
+
 	rc = sensor_i2c_client->i2c_func_tbl->i2c_read(
 		sensor_i2c_client, slave_info->sensor_id_reg_addr,
 		&chipid, MSM_CAMERA_I2C_WORD_DATA);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: match_id read failed sensor=%s slave=0x%x reg=0x%x rc=%d\n",
+			sensor_name, slave_info->sensor_slave_addr,
+			slave_info->sensor_id_reg_addr, rc);
 		pr_err("%s: %s: read id failed\n", __func__, sensor_name);
 		return rc;
 	}
 
 	pr_debug("%s: read id: 0x%x expected id 0x%x:\n",
 			__func__, chipid, slave_info->sensor_id);
+	pr_err("NX549J camera diag: match_id read sensor=%s chipid=0x%x masked=0x%x expected=0x%x mask=0x%x\n",
+		sensor_name, chipid, msm_sensor_id_by_mask(s_ctrl, chipid),
+		slave_info->sensor_id, slave_info->sensor_id_mask);
 	if (msm_sensor_id_by_mask(s_ctrl, chipid) != slave_info->sensor_id) {
+		pr_err("NX549J camera diag: match_id mismatch sensor=%s chipid=0x%x masked=0x%x expected=0x%x\n",
+			sensor_name, chipid,
+			msm_sensor_id_by_mask(s_ctrl, chipid),
+			slave_info->sensor_id);
 		pr_err("%s chip id %x does not match %x\n",
 				__func__, chipid, slave_info->sensor_id);
 		return -ENODEV;
@@ -291,8 +306,15 @@ static void msm_sensor_stop_stream(struct msm_sensor_ctrl_t *s_ctrl)
 
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	if (s_ctrl->sensor_state == MSM_SENSOR_POWER_UP) {
-		s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_write_table(
-			s_ctrl->sensor_i2c_client, &s_ctrl->stop_setting);
+		if (s_ctrl->stop_setting.size &&
+			s_ctrl->stop_setting.reg_setting) {
+			s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_write_table(
+				s_ctrl->sensor_i2c_client, &s_ctrl->stop_setting);
+		} else {
+			pr_err("NX549J camera diag: skip empty stop_setting size=%u regs=%p\n",
+				s_ctrl->stop_setting.size,
+				s_ctrl->stop_setting.reg_setting);
+		}
 		kfree(s_ctrl->stop_setting.reg_setting);
 		s_ctrl->stop_setting.reg_setting = NULL;
 
@@ -360,15 +382,109 @@ static long msm_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 }
 
 #ifdef CONFIG_COMPAT
+#define NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX 12
+struct nx549j_stock_msm_sensor_info32 {
+	char sensor_name[MAX_SENSOR_NAME];
+	uint32_t session_id;
+	int32_t subdev_id[NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX];
+	int32_t subdev_intf[NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX];
+	uint8_t is_mount_angle_valid;
+	uint32_t sensor_mount_angle;
+	int modes_supported;
+	enum camb_position_t position;
+};
+
+struct nx549j_stock_sensorb_cfg_data32 {
+	int cfgtype;
+	union {
+		struct nx549j_stock_msm_sensor_info32 sensor_info;
+		struct msm_sensor_init_params sensor_init_params;
+		compat_uptr_t setting;
+		struct msm_sensor_i2c_sync_params sensor_i2c_sync_params;
+	} cfg;
+	uint16_t sensor_temp;
+};
+
+#define NX549J_STOCK_VIDIOC_MSM_SENSOR_CFG32 \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 1, \
+		struct nx549j_stock_sensorb_cfg_data32)
+
+static void nx549j_copy_sensor_info_to_stock32(
+	struct nx549j_stock_msm_sensor_info32 *dst,
+	const struct msm_sensor_info_t *src)
+{
+	int i;
+
+	strlcpy(dst->sensor_name, src->sensor_name, sizeof(dst->sensor_name));
+	dst->session_id = src->session_id;
+	for (i = 0; i < NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX; i++) {
+		dst->subdev_id[i] = src->subdev_id[i];
+		dst->subdev_intf[i] = src->subdev_intf[i];
+	}
+	dst->is_mount_angle_valid = src->is_mount_angle_valid;
+	dst->sensor_mount_angle = src->sensor_mount_angle;
+	dst->modes_supported = src->modes_supported;
+	dst->position = src->position;
+}
+
 static long msm_sensor_subdev_do_ioctl(
 	struct file *file, unsigned int cmd, void *arg)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
+	struct nx549j_stock_sensorb_cfg_data32 *stock32 = arg;
+	struct sensorb_cfg_data32 sensor_cfg_data;
+	long rc;
+
+	if (cmd == NX549J_STOCK_VIDIOC_MSM_SENSOR_CFG32) {
+		memset(&sensor_cfg_data, 0, sizeof(sensor_cfg_data));
+		sensor_cfg_data.cfgtype = stock32->cfgtype;
+		pr_err("NX549J camera diag: stock sensor cfg32 alias cmd=0x%x cfgtype=%d\n",
+			cmd, stock32->cfgtype);
+		switch (stock32->cfgtype) {
+		case CFG_GET_SENSOR_INFO:
+			break;
+		case CFG_GET_SENSOR_INIT_PARAMS:
+			break;
+		case CFG_SET_I2C_SYNC_PARAM:
+			sensor_cfg_data.cfg.sensor_i2c_sync_params =
+				stock32->cfg.sensor_i2c_sync_params;
+			break;
+		default:
+			sensor_cfg_data.cfg.setting = stock32->cfg.setting;
+			break;
+		}
+		rc = msm_sensor_subdev_ioctl(sd, VIDIOC_MSM_SENSOR_CFG,
+			&sensor_cfg_data);
+		pr_err("NX549J camera diag: stock sensor cfg32 done cfgtype=%d rc=%ld\n",
+			stock32->cfgtype, rc);
+		if (rc < 0)
+			return rc;
+		switch (stock32->cfgtype) {
+		case CFG_GET_SENSOR_INFO:
+			nx549j_copy_sensor_info_to_stock32(
+				&stock32->cfg.sensor_info,
+				&sensor_cfg_data.cfg.sensor_info);
+			break;
+		case CFG_GET_SENSOR_INIT_PARAMS:
+			stock32->cfg.sensor_init_params =
+				sensor_cfg_data.cfg.sensor_init_params;
+			break;
+		default:
+			break;
+		}
+		return 0;
+	}
+
 	switch (cmd) {
 	case VIDIOC_MSM_SENSOR_CFG32:
 		cmd = VIDIOC_MSM_SENSOR_CFG;
 	default:
+		if (cmd != VIDIOC_MSM_SENSOR_CFG)
+			pr_err_ratelimited("NX549J camera diag: sensor compat passthrough cmd=0x%x type=0x%x nr=%u size=%u dir=%u comm=%s pid=%d\n",
+				cmd, _IOC_TYPE(cmd), _IOC_NR(cmd),
+				_IOC_SIZE(cmd), _IOC_DIR(cmd), current->comm,
+				current->pid);
 		return msm_sensor_subdev_ioctl(sd, cmd, arg);
 	}
 }
@@ -388,6 +504,9 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("%s:%d %s cfgtype = %d\n", __func__, __LINE__,
 		s_ctrl->sensordata->sensor_name, cdata->cfgtype);
+	pr_err("NX549J camera diag: sensor_config32 sensor=%s cfgtype=%d state=%d setting=0x%lx\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		s_ctrl->sensor_state, (unsigned long)cdata->cfg.setting);
 	switch (cdata->cfgtype) {
 	case CFG_GET_SENSOR_INFO:
 		memcpy(cdata->cfg.sensor_info.sensor_name,
@@ -790,6 +909,13 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		kfree(s_ctrl->stop_setting.reg_setting);
 		s_ctrl->stop_setting.reg_setting = NULL;
 		if (s_ctrl->sensor_state != MSM_SENSOR_POWER_UP) {
+			if (s_ctrl->sensor_state == MSM_SENSOR_POWER_DOWN) {
+				pr_err("%s:%d sensor=%s redundant power_down accepted\n",
+					__func__, __LINE__,
+					s_ctrl->sensordata->sensor_name);
+				rc = 0;
+				break;
+			}
 			pr_err("%s:%d failed: invalid state %d\n", __func__,
 				__LINE__, s_ctrl->sensor_state);
 			rc = -EFAULT;
@@ -824,7 +950,8 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		if (copy_from_user(&stop_setting32,
 				(void *)compat_ptr((cdata->cfg.setting)),
 			sizeof(struct msm_camera_i2c_reg_setting32))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting32 copy failed setting=0x%lx\n",
+				__func__, __LINE__, (unsigned long)cdata->cfg.setting);
 			rc = -EFAULT;
 			break;
 		}
@@ -835,16 +962,30 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		stop_setting->size = stop_setting32.size;
 
 		reg_setting = compat_ptr(stop_setting32.reg_setting);
+		pr_err("%s:%d stop_setting32 setting=0x%lx regs=0x%lx size=%u addr_type=%d data_type=%d delay=%u\n",
+			__func__, __LINE__, (unsigned long)cdata->cfg.setting,
+			(unsigned long)stop_setting32.reg_setting, stop_setting->size,
+			stop_setting->addr_type, stop_setting->data_type,
+			stop_setting->delay);
 
-		if (!stop_setting->size) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -EFAULT;
-			break;
-		}
-		stop_setting->reg_setting = kzalloc(stop_setting->size *
+			if (!stop_setting->size) {
+				pr_err("%s:%d stop_setting32 empty zero size accepted\n",
+					__func__, __LINE__);
+				stop_setting->reg_setting = NULL;
+				rc = 0;
+				break;
+			}
+			if (!reg_setting) {
+				pr_err("%s:%d stop_setting32 invalid NULL regs with size=%u\n",
+					__func__, __LINE__, stop_setting->size);
+				rc = -EFAULT;
+				break;
+			}
+			stop_setting->reg_setting = kzalloc(stop_setting->size *
 			(sizeof(struct msm_camera_i2c_reg_array)), GFP_KERNEL);
 		if (!stop_setting->reg_setting) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting32 alloc failed size=%u\n",
+				__func__, __LINE__, stop_setting->size);
 			rc = -ENOMEM;
 			break;
 		}
@@ -852,7 +993,8 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 			(void *)reg_setting,
 			stop_setting->size *
 			sizeof(struct msm_camera_i2c_reg_array))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting32 regs copy failed regs=%p size=%u\n",
+				__func__, __LINE__, reg_setting, stop_setting->size);
 			kfree(stop_setting->reg_setting);
 			stop_setting->reg_setting = NULL;
 			stop_setting->size = 0;
@@ -902,6 +1044,9 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	}
 
 DONE:
+	pr_err("NX549J camera diag: sensor_config32 done sensor=%s cfgtype=%d state=%d rc=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		s_ctrl->sensor_state, rc);
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 
 	return rc;
@@ -916,6 +1061,9 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("%s:%d %s cfgtype = %d\n", __func__, __LINE__,
 		s_ctrl->sensordata->sensor_name, cdata->cfgtype);
+	pr_err("NX549J camera diag: sensor_config sensor=%s cfgtype=%d state=%d setting=%p\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		s_ctrl->sensor_state, cdata->cfg.setting);
 	switch (cdata->cfgtype) {
 	case CFG_GET_SENSOR_INFO:
 		memcpy(cdata->cfg.sensor_info.sensor_name,
@@ -1277,6 +1425,13 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 		kfree(s_ctrl->stop_setting.reg_setting);
 		s_ctrl->stop_setting.reg_setting = NULL;
 		if (s_ctrl->sensor_state != MSM_SENSOR_POWER_UP) {
+			if (s_ctrl->sensor_state == MSM_SENSOR_POWER_DOWN) {
+				pr_err("%s:%d sensor=%s redundant power_down accepted\n",
+					__func__, __LINE__,
+					s_ctrl->sensordata->sensor_name);
+				rc = 0;
+				break;
+			}
 			pr_err("%s:%d failed: invalid state %d\n", __func__,
 				__LINE__, s_ctrl->sensor_state);
 			rc = -EFAULT;
@@ -1311,22 +1466,36 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 		if (copy_from_user(stop_setting,
 			(void *)cdata->cfg.setting,
 			sizeof(struct msm_camera_i2c_reg_setting))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting copy failed setting=%p\n",
+				__func__, __LINE__, cdata->cfg.setting);
 			rc = -EFAULT;
 			break;
 		}
 
 		reg_setting = stop_setting->reg_setting;
+		pr_err("%s:%d stop_setting setting=%p regs=%p size=%u addr_type=%d data_type=%d delay=%u\n",
+			__func__, __LINE__, cdata->cfg.setting, reg_setting,
+			stop_setting->size, stop_setting->addr_type,
+			stop_setting->data_type, stop_setting->delay);
 
-		if (!stop_setting->size) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -EFAULT;
-			break;
-		}
-		stop_setting->reg_setting = kzalloc(stop_setting->size *
+			if (!stop_setting->size) {
+				pr_err("%s:%d stop_setting empty zero size accepted\n",
+					__func__, __LINE__);
+				stop_setting->reg_setting = NULL;
+				rc = 0;
+				break;
+			}
+			if (!reg_setting) {
+				pr_err("%s:%d stop_setting invalid NULL regs with size=%u\n",
+					__func__, __LINE__, stop_setting->size);
+				rc = -EFAULT;
+				break;
+			}
+			stop_setting->reg_setting = kzalloc(stop_setting->size *
 			(sizeof(struct msm_camera_i2c_reg_array)), GFP_KERNEL);
 		if (!stop_setting->reg_setting) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting alloc failed size=%u\n",
+				__func__, __LINE__, stop_setting->size);
 			rc = -ENOMEM;
 			break;
 		}
@@ -1334,7 +1503,8 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 			(void *)reg_setting,
 			stop_setting->size *
 			sizeof(struct msm_camera_i2c_reg_array))) {
-			pr_err("%s:%d failed\n", __func__, __LINE__);
+			pr_err("%s:%d stop_setting regs copy failed regs=%p size=%u\n",
+				__func__, __LINE__, reg_setting, stop_setting->size);
 			kfree(stop_setting->reg_setting);
 			stop_setting->reg_setting = NULL;
 			stop_setting->size = 0;
@@ -1384,6 +1554,9 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 	}
 
 DONE:
+	pr_err("NX549J camera diag: sensor_config done sensor=%s cfgtype=%d state=%d rc=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		s_ctrl->sensor_state, rc);
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 
 	return rc;

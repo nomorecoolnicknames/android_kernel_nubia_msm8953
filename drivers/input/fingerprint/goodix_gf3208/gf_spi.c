@@ -89,8 +89,12 @@ static struct wakeup_source gf_ttw_wl;
 
 void gf_free_irq(struct gf_dev *gf_dev)
 {
+	if (!gf_dev->irq_requested)
+		return;
+
 	devm_free_irq(&gf_dev->spi->dev, gf_dev->irq, gf_dev);
 	gf_dev->irq_enabled = 1;
+	gf_dev->irq_requested = 0;
 }
 
 static void gf_enable_irq(struct gf_dev *gf_dev)
@@ -263,6 +267,8 @@ static int driver_init_partial(struct gf_dev *gf_dev)
 		       gpio_to_irq(gf_dev->irq_gpio));
 		goto error;
 	}
+	gf_dev->irq_requested = 1;
+	gf_dev->irq_enabled = 1;
 	FUNC_EXIT();
 	return 0;
 
@@ -440,6 +446,7 @@ static int gf_probe(struct platform_device *pdev)
 	gf_dev->device_available = 0;
 	gf_dev->fb_black         = 0;
 	gf_dev->irq_enabled      = 1;
+	gf_dev->irq_requested    = 0;
 
 	mutex_lock(&device_list_lock);
 	minor = find_first_zero_bit(minors, N_SPI_MINORS);

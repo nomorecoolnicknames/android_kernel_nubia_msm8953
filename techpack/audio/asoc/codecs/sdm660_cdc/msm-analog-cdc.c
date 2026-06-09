@@ -3062,7 +3062,9 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"LINEOUT PA", NULL, "LINE_OUT"},
 	{"LINE_OUT", "Switch", "LINEOUT DAC"},
 	{"LINEOUT DAC", NULL, "PDM_IN_RX3"},
-#if (defined CONFIG_MACH_XIAOMI_MIDO) || (defined CONFIG_MACH_XIAOMI_TISSOT)
+#if defined(CONFIG_MACH_NUBIA_NX549J) || \
+	(defined CONFIG_MACH_XIAOMI_MIDO) || \
+	(defined CONFIG_MACH_XIAOMI_TISSOT)
 	{ "Ext Spk", NULL, "LINEOUT PA"},
 #endif
 

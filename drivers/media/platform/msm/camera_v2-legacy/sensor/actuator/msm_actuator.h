@@ -27,6 +27,9 @@
 
 #define	MSM_ACTUATOR_MAX_VREGS (10)
 #define	ACTUATOR_MAX_POLL_COUNT 10
+#ifndef MSM_ACTUATOT_MAX_NAME
+#define	MSM_ACTUATOT_MAX_NAME 32
+#endif
 
 struct msm_actuator_ctrl_t;
 
@@ -108,6 +111,7 @@ struct msm_actuator_ctrl_t {
 	struct msm_camera_gpio_conf *gconf;
 	struct msm_pinctrl_info pinctrl_info;
 	uint8_t cam_pinctrl_status;
+	char act_name[MSM_ACTUATOT_MAX_NAME];
 };
 
 #endif

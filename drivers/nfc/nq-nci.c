@@ -23,6 +23,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_device.h>
 #include <linux/uaccess.h>
+#include <linux/err.h>
 #include "nq-nci.h"
 #include <linux/clk.h>
 #ifdef CONFIG_COMPAT
@@ -711,6 +712,8 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 						sizeof(raw_nci_reset_cmd));
 	if (ret < 0) {
 		dev_err(&client->dev,
+			"NX549J_NFC214 CORE_RESET_SEND_NOACK ret=%d\n", ret);
+		dev_err(&client->dev,
 		"%s: - i2c_master_send core reset Error\n", __func__);
 
 		if (gpio_is_valid(nqx_dev->firm_gpio)) {
@@ -727,10 +730,15 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 
 		if (ret < 0) {
 			dev_err(&client->dev,
+				"NX549J_NFC214 GET_VERSION_SEND_NOACK ret=%d\n",
+				ret);
+			dev_err(&client->dev,
 				"%s: - i2c_master_send get version cmd Error\n",
 				__func__);
 			goto err_nfcc_hw_check;
 		}
+		dev_err(&client->dev,
+			"NX549J_NFC214 GET_VERSION_SEND_ACK ret=%d\n", ret);
 		/* hardware dependent delay */
 		usleep_range(10000, 10100);
 
@@ -741,9 +749,9 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 				"%s: - i2c_master_recv get version rsp Error\n",
 				__func__);
 			goto err_nfcc_hw_check;
-		} else {
-			nqx_dev->nqx_info.info.chip_type =
-				nci_get_version_rsp[3];
+			} else {
+				nqx_dev->nqx_info.info.chip_type =
+					nci_get_version_rsp[3];
 			nqx_dev->nqx_info.info.rom_version =
 				nci_get_version_rsp[4];
 			if ((nci_get_version_rsp[3] == NFCC_SN100_A)
@@ -758,10 +766,12 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 				nqx_dev->nqx_info.info.fw_major =
 					nci_get_version_rsp[11];
 			}
+			}
+			goto err_nfcc_reset_failed;
 		}
-		goto err_nfcc_reset_failed;
-	}
-	ret = is_data_available_for_read(nqx_dev);
+		dev_err(&client->dev,
+			"NX549J_NFC214 CORE_RESET_SEND_ACK ret=%d\n", ret);
+		ret = is_data_available_for_read(nqx_dev);
 	if (ret < 0) {
 		nqx_disable_irq(nqx_dev);
 		goto err_nfcc_hw_check;
@@ -781,9 +791,13 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 				sizeof(raw_nci_init_cmd));
 	if (ret < 0) {
 		dev_err(&client->dev,
+			"NX549J_NFC214 CORE_INIT_SEND_NOACK ret=%d\n", ret);
+		dev_err(&client->dev,
 		"%s: - i2c_master_send failed for Core INIT\n", __func__);
 		goto err_nfcc_core_init_fail;
 	}
+	dev_err(&client->dev,
+		"NX549J_NFC214 CORE_INIT_SEND_ACK ret=%d\n", ret);
 	ret = is_data_available_for_read(nqx_dev);
 	if (ret < 0) {
 		nqx_disable_irq(nqx_dev);
@@ -884,16 +898,26 @@ static int nqx_clock_select(struct nqx_dev *nqx_dev)
 
 	nqx_dev->s_clk = clk_get(&nqx_dev->client->dev, "ref_clk");
 
-	if (nqx_dev->s_clk == NULL)
+	if (IS_ERR_OR_NULL(nqx_dev->s_clk)) {
+		r = nqx_dev->s_clk ? PTR_ERR(nqx_dev->s_clk) : -EINVAL;
+		dev_err(&nqx_dev->client->dev,
+			"NX549J_NFC214 REF_CLK_GET_FAIL ret=%d\n", r);
+		nqx_dev->s_clk = NULL;
 		goto err_clk;
+	}
 
 	if (nqx_dev->clk_run == false)
 		r = clk_prepare_enable(nqx_dev->s_clk);
 
-	if (r)
+	if (r) {
+		dev_err(&nqx_dev->client->dev,
+			"NX549J_NFC214 REF_CLK_ENABLE_FAIL ret=%d\n", r);
 		goto err_clk;
+	}
 
 	nqx_dev->clk_run = true;
+	dev_err(&nqx_dev->client->dev,
+		"NX549J_NFC214 REF_CLK_ENABLE_OK\n");
 
 	return r;
 
@@ -953,6 +977,11 @@ static int nfc_parse_dt(struct device *dev, struct nqx_platform_data *pdata)
 		pdata->clk_pin_voting = true;
 
 	pdata->clkreq_gpio = of_get_named_gpio(np, "qcom,nq-clkreq", 0);
+	if (!gpio_is_valid(pdata->clkreq_gpio)) {
+		dev_warn(dev,
+			"CLKREQ GPIO <OPTIONAL> error getting from OF node\n");
+		pdata->clkreq_gpio = -EINVAL;
+	}
 
 	return r;
 }
@@ -1129,23 +1158,27 @@ static int nqx_probe(struct i2c_client *client,
 		r = gpio_request(platform_data->clkreq_gpio,
 			"nfc_clkreq_gpio");
 		if (r) {
-			dev_err(&client->dev,
-				"%s: unable to request nfc clkreq gpio [%d]\n",
+			dev_warn(&client->dev,
+				"%s: optional nfc clkreq gpio request failed [%d], continuing\n",
 				__func__, platform_data->clkreq_gpio);
-			goto err_ese_gpio;
+			platform_data->clkreq_gpio = -EINVAL;
+			r = 0;
+			goto clkreq_optional_done;
 		}
 		r = gpio_direction_input(platform_data->clkreq_gpio);
 		if (r) {
-			dev_err(&client->dev,
-			"%s: cannot set direction for nfc clkreq gpio [%d]\n",
-			__func__, platform_data->clkreq_gpio);
-			goto err_clkreq_gpio;
+			dev_warn(&client->dev,
+				"%s: optional nfc clkreq gpio direction failed [%d], continuing\n",
+				__func__, platform_data->clkreq_gpio);
+			gpio_free(platform_data->clkreq_gpio);
+			platform_data->clkreq_gpio = -EINVAL;
+			r = 0;
 		}
 	} else {
-		dev_err(&client->dev,
-			"%s: clkreq gpio not provided\n", __func__);
-		goto err_ese_gpio;
+		dev_warn(&client->dev,
+			"%s: optional clkreq gpio not provided\n", __func__);
 	}
+clkreq_optional_done:
 
 	nqx_dev->en_gpio = platform_data->en_gpio;
 	nqx_dev->irq_gpio = platform_data->irq_gpio;
@@ -1183,7 +1216,27 @@ static int nqx_probe(struct i2c_client *client,
 	 * present before attempting further hardware initialisation.
 	 *
 	 */
+	if (platform_data->clk_pin_voting) {
+		r = nqx_clock_select(nqx_dev);
+		if (r < 0) {
+			dev_warn(&client->dev,
+				"NX549J_NFC214 REF_CLK_PRECHECK_FAIL ret=%d, continuing hw check\n",
+				r);
+			r = 0;
+		}
+	}
 	r = nfcc_hw_check(client, nqx_dev);
+	if (platform_data->clk_pin_voting && nqx_dev->clk_run) {
+		int clk_r = nqx_clock_deselect(nqx_dev);
+
+		if (clk_r < 0)
+			dev_warn(&client->dev,
+				"NX549J_NFC214 REF_CLK_DISABLE_FAIL ret=%d\n",
+				clk_r);
+		else
+			dev_err(&client->dev,
+				"NX549J_NFC214 REF_CLK_DISABLE_OK\n");
+	}
 	if (r) {
 		/* make sure NFCC is not enabled */
 		gpio_set_value(platform_data->en_gpio, 0);
@@ -1234,7 +1287,8 @@ err_request_irq_failed:
 err_misc_register:
 	mutex_destroy(&nqx_dev->read_mutex);
 err_clkreq_gpio:
-	gpio_free(platform_data->clkreq_gpio);
+	if (gpio_is_valid(platform_data->clkreq_gpio))
+		gpio_free(platform_data->clkreq_gpio);
 err_ese_gpio:
 	/* optional gpio, not sure was configured in probe */
 	if (gpio_is_valid(platform_data->ese_gpio))
@@ -1276,7 +1330,8 @@ static int nqx_remove(struct i2c_client *client)
 	free_irq(client->irq, nqx_dev);
 	misc_deregister(&nqx_dev->nqx_device);
 	mutex_destroy(&nqx_dev->read_mutex);
-	gpio_free(nqx_dev->clkreq_gpio);
+	if (gpio_is_valid(nqx_dev->clkreq_gpio))
+		gpio_free(nqx_dev->clkreq_gpio);
 	/* optional gpio, not sure was configured in probe */
 	if (nqx_dev->ese_gpio > 0)
 		gpio_free(nqx_dev->ese_gpio);

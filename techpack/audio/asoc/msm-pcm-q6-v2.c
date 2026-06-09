@@ -325,6 +325,7 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	struct msm_plat_data *pdata;
 	struct snd_pcm_hw_params *params;
 	int ret;
+	int asm_api_ver;
 	uint32_t fmt_type = FORMAT_LINEAR_PCM;
 	uint16_t bits_per_sample;
 	uint16_t sample_word_size;
@@ -387,11 +388,17 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 			return -ENOMEM;
 		}
 	} else {
-		if (q6core_get_avcs_api_version_per_service(
-				APRV2_IDS_SERVICE_ID_ADSP_ASM_V) >=
-				ADSP_ASM_API_VERSION_V2)
+		asm_api_ver = q6core_get_avcs_api_version_per_service(
+				APRV2_IDS_SERVICE_ID_ADSP_ASM_V);
+		if (asm_api_ver >= ADSP_ASM_API_VERSION_V2)
 			ret = q6asm_open_write_v5(prtd->audio_client,
 				fmt_type, bits_per_sample);
+		else if (asm_api_ver < 0) {
+			pr_info_once("%s: AVCS ASM version query failed (%d), using PCM media format v2 fallback\n",
+				     __func__, asm_api_ver);
+			ret = q6asm_open_write_v2(prtd->audio_client,
+				fmt_type, bits_per_sample);
+		}
 		else
 			ret = q6asm_open_write_v4(prtd->audio_client,
 				fmt_type, bits_per_sample);
@@ -435,9 +442,9 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 			prtd->channel_map, bits_per_sample);
 	} else {
 
-		if (q6core_get_avcs_api_version_per_service(
-				APRV2_IDS_SERVICE_ID_ADSP_ASM_V) >=
-				ADSP_ASM_API_VERSION_V2) {
+		asm_api_ver = q6core_get_avcs_api_version_per_service(
+				APRV2_IDS_SERVICE_ID_ADSP_ASM_V);
+		if (asm_api_ver >= ADSP_ASM_API_VERSION_V2) {
 
 			ret = q6asm_media_format_block_multi_ch_pcm_v5(
 				prtd->audio_client, runtime->rate,
@@ -445,6 +452,11 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 				prtd->channel_map, bits_per_sample,
 				sample_word_size, ASM_LITTLE_ENDIAN,
 				DEFAULT_QF);
+		} else if (asm_api_ver < 0) {
+			ret = q6asm_media_format_block_multi_ch_pcm_v2(
+				prtd->audio_client, runtime->rate,
+				runtime->channels, !prtd->set_channel_map,
+				prtd->channel_map, bits_per_sample);
 		} else {
 			ret = q6asm_media_format_block_multi_ch_pcm_v4(
 				prtd->audio_client, runtime->rate,

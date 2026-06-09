@@ -7,6 +7,10 @@
 #include <linux/types.h>
 #include <linux/i2c.h>
 
+#ifndef MSM_ACTUATOT_MAX_NAME
+#define MSM_ACTUATOT_MAX_NAME 32
+#endif
+
 #define I2C_SEQ_REG_SETTING_MAX   5
 
 #define MSM_SENSOR_MCLK_8HZ   8000000
@@ -366,6 +370,7 @@ enum msm_actuator_cfg_type_t {
 	CFG_ACTUATOR_POWERDOWN,
 	CFG_ACTUATOR_POWERUP,
 	CFG_ACTUATOR_INIT,
+	CFG_SET_ACTUATOR_NAME,
 };
 
 struct msm_ois_opcode {
@@ -522,6 +527,7 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_get_info_t get_info;
 		struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
+		char act_name[MSM_ACTUATOT_MAX_NAME];
 	} cfg;
 };
 
@@ -632,4 +638,3 @@ struct sensor_init_cfg_data {
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 16, struct msm_laser_led_cfg_data_t)
 
 #endif
-

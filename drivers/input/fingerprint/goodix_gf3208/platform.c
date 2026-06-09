@@ -106,7 +106,6 @@ int gf_parse_dts(struct gf_dev *gf_dev)
 		rc = 0;
 	}
 
-	gpio_direction_output(gf_dev->irq_gpio, 0);
 	gpio_direction_input(gf_dev->irq_gpio);
 
 #ifdef ENABLE_PINCTRL
@@ -150,8 +149,11 @@ void gf_cleanup(struct gf_dev *gf_dev)
 	gf_dbg("enter %s\n", __func__);
 
 	if (gpio_is_valid(gf_dev->irq_gpio)) {
+		if (gf_dev->irq > 0)
+			gf_free_irq(gf_dev);
 		devm_gpio_free(&gf_dev->spi->dev, gf_dev->irq_gpio);
 		gf_dev->irq_gpio = -EINVAL;
+		gf_dev->irq = 0;
 	}
 	if (gpio_is_valid(gf_dev->reset_gpio)) {
 		devm_gpio_free(&gf_dev->spi->dev, gf_dev->reset_gpio);

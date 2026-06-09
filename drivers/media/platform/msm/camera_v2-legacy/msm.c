@@ -217,6 +217,48 @@ static inline int __msm_queue_find_command_ack_q(void *d1, void *d2)
 	return (ack->stream_id == *(unsigned int *)d2) ? 1 : 0;
 }
 
+static const char *msm_camera_ioctl_name(unsigned int cmd)
+{
+	switch (cmd) {
+	case MSM_CAM_V4L2_IOCTL_NOTIFY:
+		return "NOTIFY";
+	case MSM_CAM_V4L2_IOCTL_NOTIFY_META:
+		return "NOTIFY_META";
+	case MSM_CAM_V4L2_IOCTL_CMD_ACK:
+		return "CMD_ACK";
+	case MSM_CAM_V4L2_IOCTL_NOTIFY_ERROR:
+		return "NOTIFY_ERROR";
+	case MSM_CAM_V4L2_IOCTL_NOTIFY_DEBUG:
+		return "NOTIFY_DEBUG";
+	case MSM_CAM_V4L2_IOCTL_DAEMON_DISABLED:
+		return "DAEMON_DISABLED";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static const char *msm_camera_event_name(unsigned int event_id)
+{
+	switch (event_id) {
+	case MSM_CAMERA_NEW_SESSION:
+		return "NEW_SESSION";
+	case MSM_CAMERA_DEL_SESSION:
+		return "DEL_SESSION";
+	case MSM_CAMERA_SET_PARM:
+		return "SET_PARM";
+	case MSM_CAMERA_GET_PARM:
+		return "GET_PARM";
+	case MSM_CAMERA_MAPPING_CFG:
+		return "MAPPING_CFG";
+	case MSM_CAMERA_MAPPING_SES:
+		return "MAPPING_SES";
+	case MSM_CAMERA_MSM_NOTIFY:
+		return "MSM_NOTIFY";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 static inline void msm_pm_qos_add_request(void)
 {
 	pr_info("%s: add request\n", __func__);
@@ -229,6 +271,8 @@ static inline void msm_pm_qos_add_request(void)
 static void msm_pm_qos_remove_request(void)
 {
 	pr_info("%s: remove request\n", __func__);
+	if (!atomic_cmpxchg(&qos_add_request_done, 1, 0))
+		return;
 	pm_qos_remove_request(&msm_v4l2_pm_qos_request);
 }
 
@@ -726,12 +770,23 @@ static long msm_private_ioctl(struct file *file, void *fh,
 	struct msm_sd_subdev *msm_sd;
 
 	if (cmd == MSM_CAM_V4L2_IOCTL_DAEMON_DISABLED) {
+		pr_err("NX549J camera diag: msm_private_ioctl DAEMON_DISABLED\n");
 		is_daemon_status = false;
 		return 0;
 	}
 
-	if (!event_data)
+	if (!event_data) {
+		pr_err("NX549J camera diag: msm_private_ioctl %s cmd=0x%x without event data\n",
+			msm_camera_ioctl_name(cmd), cmd);
 		return -EINVAL;
+	}
+
+	pr_err("NX549J camera diag: msm_private_ioctl %s cmd=0x%x session=%u stream=%u evt_type=0x%x evt_id=%u evt_cmd=%u status=0x%x ret=%u notify=%u\n",
+		msm_camera_ioctl_name(cmd), cmd, event_data->session_id,
+		event_data->stream_id, event_data->v4l2_event_type,
+		event_data->v4l2_event_id, event_data->command,
+		event_data->status, event_data->ret_value,
+		event_data->notify);
 
 	switch (cmd) {
 	case MSM_CAM_V4L2_IOCTL_NOTIFY:
@@ -740,6 +795,8 @@ static long msm_private_ioctl(struct file *file, void *fh,
 	case MSM_CAM_V4L2_IOCTL_NOTIFY_ERROR:
 		break;
 	default:
+		pr_err("NX549J camera diag: msm_private_ioctl unsupported cmd=0x%x\n",
+			cmd);
 		return -ENOTTY;
 	}
 
@@ -750,8 +807,11 @@ static long msm_private_ioctl(struct file *file, void *fh,
 	session = msm_queue_find(msm_session_q, struct msm_session,
 		list, __msm_queue_find_session, &session_id);
 
-	if (!session)
+	if (!session) {
+		pr_err("NX549J camera diag: msm_private_ioctl session not found session=%u stream=%u cmd=%s\n",
+			session_id, stream_id, msm_camera_ioctl_name(cmd));
 		return -EINVAL;
+	}
 
 	switch (cmd) {
 	case MSM_CAM_V4L2_IOCTL_NOTIFY: {
@@ -785,6 +845,8 @@ static long msm_private_ioctl(struct file *file, void *fh,
 		if (WARN_ON(!cmd_ack)) {
 			kzfree(ret_cmd);
 			rc = -EFAULT;
+			pr_err("NX549J camera diag: CMD_ACK no command_ack_q session=%u stream=%u\n",
+				session_id, stream_id);
 			break;
 		}
 
@@ -795,6 +857,10 @@ static long msm_private_ioctl(struct file *file, void *fh,
 		memcpy(&event.u.data, event_data,
 			sizeof(struct msm_v4l2_event_data));
 		memcpy(&ret_cmd->event, &event, sizeof(struct v4l2_event));
+		pr_err("NX549J camera diag: CMD_ACK enqueue session=%u stream=%u event=%s type=0x%x id=%u status=0x%x ret=%u\n",
+			session_id, stream_id,
+			msm_camera_event_name(event.id), event.type, event.id,
+			event_data->status, event_data->ret_value);
 		msm_enqueue(&cmd_ack->command_q, &ret_cmd->list);
 		complete(&cmd_ack->wait_complete);
 		spin_unlock_irqrestore(&(session->command_ack_q.lock),
@@ -844,6 +910,8 @@ static int msm_unsubscribe_event(struct v4l2_fh *fh,
 	mutex_lock(&v4l2_event_mtx);
 	rc = v4l2_event_unsubscribe(fh, sub);
 	mutex_unlock(&v4l2_event_mtx);
+	pr_err("NX549J camera diag: unsubscribe event type=0x%x id=%u rc=%d\n",
+		sub->type, sub->id, rc);
 
 	return rc;
 }
@@ -856,6 +924,8 @@ static int msm_subscribe_event(struct v4l2_fh *fh,
 	mutex_lock(&v4l2_event_mtx);
 	rc = v4l2_event_subscribe(fh, sub, 5, NULL);
 	mutex_unlock(&v4l2_event_mtx);
+	pr_err("NX549J camera diag: subscribe event type=0x%x id=%u rc=%d\n",
+		sub->type, sub->id, rc);
 
 	return rc;
 }
@@ -945,6 +1015,11 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	/*re-init wait_complete */
 	reinit_completion(&cmd_ack->wait_complete);
 
+	pr_err("NX549J camera diag: post_event %s type=0x%x id=%u cmd=%u session=%d stream=%d arg=%d timeout=%d\n",
+		msm_camera_event_name(event->id), event->type, event->id,
+		event_data->command, session_id, stream_id,
+		event_data->arg_value, timeout);
+
 	v4l2_event_queue(vdev, event);
 
 	if (timeout < 0) {
@@ -984,6 +1059,11 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	}
 
 	event_data = (struct msm_v4l2_event_data *)cmd->event.u.data;
+	pr_err("NX549J camera diag: post_event ack %s type=0x%x id=%u cmd=%u session=%u stream=%u status=0x%x ret=%u\n",
+		msm_camera_event_name(cmd->event.id), cmd->event.type,
+		cmd->event.id, event_data->command, event_data->session_id,
+		event_data->stream_id, event_data->status,
+		event_data->ret_value);
 
 	/* compare cmd_ret and event */
 	if (WARN_ON(event->type != cmd->event.type) ||
@@ -1336,6 +1416,7 @@ static int msm_probe(struct platform_device *pdev)
 					0, NULL)) < 0))
 		goto entity_fail;
 
+	pvdev->vdev->entity.function = MEDIA_ENT_F_IO_V4L;
 	pvdev->vdev->entity.group_id = QCAMERA_VNODE_GROUP_ID;
 #endif
 

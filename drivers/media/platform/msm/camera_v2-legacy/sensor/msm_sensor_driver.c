@@ -99,6 +99,9 @@ static int32_t msm_sensor_driver_create_i2c_v4l_subdev
 #endif
 
 	CDBG("%s rc %d session_id %d\n", __func__, rc, session_id);
+	pr_err("NX549J camera diag: create i2c v4l subdev sensor=%s bypass=%u session_id=%u rc=%d\n",
+		s_ctrl->sensordata->sensor_name,
+		s_ctrl->bypass_video_node_creation, session_id, rc);
 	snprintf(s_ctrl->msm_sd.sd.name,
 		sizeof(s_ctrl->msm_sd.sd.name), "%s",
 		s_ctrl->sensordata->sensor_name);
@@ -146,6 +149,9 @@ static int32_t msm_sensor_driver_create_v4l_subdev
 #endif
 
 	CDBG("rc %d session_id %d", rc, session_id);
+	pr_err("NX549J camera diag: create platform v4l subdev sensor=%s bypass=%u session_id=%u rc=%d\n",
+		s_ctrl->sensordata->sensor_name,
+		s_ctrl->bypass_video_node_creation, session_id, rc);
 	s_ctrl->sensordata->sensor_info->session_id = session_id;
 
 	/* Create /dev/v4l-subdevX device */
@@ -814,12 +820,25 @@ int32_t msm_sensor_driver_probe(void *setting,
 		slave_info->sensor_init_params.position);
 	CDBG("mount %d",
 		slave_info->sensor_init_params.sensor_mount_angle);
+	pr_err("NX549J camera diag: probe request cam=%u sensor=%s eeprom=%s actuator=%s flash=%s slave=0x%x addr_type=%u id_reg=0x%x id=0x%x mask=0x%x power=%u/%u i2c_freq=%u\n",
+		slave_info->camera_id, slave_info->sensor_name,
+		slave_info->eeprom_name, slave_info->actuator_name,
+		slave_info->flash_name, slave_info->slave_addr,
+		slave_info->addr_type,
+		slave_info->sensor_id_info.sensor_id_reg_addr,
+		slave_info->sensor_id_info.sensor_id,
+		slave_info->sensor_id_info.sensor_id_mask,
+		slave_info->power_setting_array.size,
+		slave_info->power_setting_array.size_down,
+		slave_info->i2c_freq_mode);
 #ifndef CONFIG_MACH_XIAOMI_C6
 	CDBG("bypass video node creation %d",
 		slave_info->bypass_video_node_creation);
 #endif
 	/* Validate camera id */
 	if (slave_info->camera_id >= MAX_CAMERAS) {
+		pr_err("NX549J camera diag: invalid camera id %d max %d\n",
+			slave_info->camera_id, MAX_CAMERAS);
 		pr_err("failed: invalid camera id %d max %d",
 			slave_info->camera_id, MAX_CAMERAS);
 		rc = -EINVAL;
@@ -872,14 +891,20 @@ int32_t msm_sensor_driver_probe(void *setting,
 	rc = msm_sensor_get_power_settings(setting, slave_info,
 		&s_ctrl->sensordata->power_info);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: get_power_settings failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("failed");
 		goto free_slave_info;
 	}
 
 
 	camera_info = kzalloc(sizeof(struct msm_camera_slave_info), GFP_KERNEL);
-	if (!camera_info)
+	if (!camera_info) {
+		pr_err("NX549J camera diag: no memory for camera_info sensor=%s\n",
+			slave_info->sensor_name);
+		rc = -ENOMEM;
 		goto free_power_settings;
+	}
 
 	s_ctrl->sensordata->slave_info = camera_info;
 
@@ -905,7 +930,10 @@ int32_t msm_sensor_driver_probe(void *setting,
 
 	cci_client = s_ctrl->sensor_i2c_client->cci_client;
 	if (!cci_client) {
+		pr_err("NX549J camera diag: missing cci_client sensor=%s cam=%u\n",
+			slave_info->sensor_name, slave_info->camera_id);
 		pr_err("failed: cci_client %pK", cci_client);
+		rc = -EINVAL;
 		goto free_camera_info;
 	}
 	cci_client->cci_i2c_master = s_ctrl->cci_i2c_master;
@@ -921,6 +949,8 @@ int32_t msm_sensor_driver_probe(void *setting,
 		s_ctrl->sensordata->power_info.power_setting,
 		s_ctrl->sensordata->power_info.power_setting_size);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: power up vreg params failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("failed: msm_camera_get_dt_power_setting_data rc %d",
 			rc);
 		goto free_camera_info;
@@ -933,6 +963,8 @@ int32_t msm_sensor_driver_probe(void *setting,
 		s_ctrl->sensordata->power_info.power_down_setting,
 		s_ctrl->sensordata->power_info.power_down_setting_size);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: power down vreg params failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("failed: msm_camera_fill_vreg_params for PDOWN rc %d",
 			rc);
 		goto free_camera_info;
@@ -951,6 +983,8 @@ CSID_TG:
 	 */
 	rc = msm_sensor_fill_eeprom_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: eeprom subdev lookup failed sensor=%s eeprom=%s rc=%d\n",
+			slave_info->sensor_name, slave_info->eeprom_name, rc);
 		pr_err("%s failed %d\n", __func__, __LINE__);
 		goto free_camera_info;
 	}
@@ -959,32 +993,50 @@ CSID_TG:
 	 */
 	rc = msm_sensor_fill_actuator_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: actuator subdev lookup failed sensor=%s actuator=%s rc=%d\n",
+			slave_info->sensor_name, slave_info->actuator_name, rc);
 		pr_err("%s failed %d\n", __func__, __LINE__);
 		goto free_camera_info;
 	}
 
 	rc = msm_sensor_fill_ois_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: ois subdev lookup failed sensor=%s ois=%s rc=%d\n",
+			slave_info->sensor_name, slave_info->ois_name, rc);
 		pr_err("%s failed %d\n", __func__, __LINE__);
 		goto free_camera_info;
 	}
 
 	rc = msm_sensor_fill_flash_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: flash subdev lookup failed sensor=%s flash=%s rc=%d\n",
+			slave_info->sensor_name, slave_info->flash_name, rc);
 		pr_err("%s failed %d\n", __func__, __LINE__);
 		goto free_camera_info;
 	}
 
 	/* Power up and probe sensor */
+	pr_err("NX549J camera diag: power up start sensor=%s cam=%u slave=0x%x cci_master=%d\n",
+		slave_info->sensor_name, slave_info->camera_id,
+		slave_info->slave_addr, s_ctrl->cci_i2c_master);
 	rc = s_ctrl->func_tbl->sensor_power_up(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: power up failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("%s power up failed", slave_info->sensor_name);
 		goto free_camera_info;
 	}
 
+	pr_err("NX549J camera diag: power up and match succeeded sensor=%s\n",
+		slave_info->sensor_name);
 	pr_err("%s probe succeeded", slave_info->sensor_name);
 
-#ifndef CONFIG_MACH_XIAOMI_C6
+#if defined(CONFIG_MACH_NUBIA_NX549J)
+	pr_err("NX549J camera diag: force video node creation sensor=%s userspace_bypass=%u\n",
+		slave_info->sensor_name,
+		slave_info->bypass_video_node_creation);
+	s_ctrl->bypass_video_node_creation = 0;
+#elif !defined(CONFIG_MACH_XIAOMI_C6)
 	s_ctrl->bypass_video_node_creation =
 		slave_info->bypass_video_node_creation;
 #endif
@@ -1007,22 +1059,30 @@ CSID_TG:
 	else
 		rc = msm_sensor_driver_create_i2c_v4l_subdev(s_ctrl);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: create v4l subdev failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("failed: camera creat v4l2 rc %d", rc);
 		goto camera_power_down;
 	}
 
 	/* Power down */
 	s_ctrl->func_tbl->sensor_power_down(s_ctrl);
+	pr_err("NX549J camera diag: post-probe power down complete sensor=%s\n",
+		slave_info->sensor_name);
 
 	rc = msm_sensor_fill_slave_info_init_params(
 		slave_info,
 		s_ctrl->sensordata->sensor_info);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: fill slave info failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("%s Fill slave info failed", slave_info->sensor_name);
 		goto free_camera_info;
 	}
 	rc = msm_sensor_validate_slave_info(s_ctrl->sensordata->sensor_info);
 	if (rc < 0) {
+		pr_err("NX549J camera diag: validate slave info failed sensor=%s rc=%d\n",
+			slave_info->sensor_name, rc);
 		pr_err("%s Validate slave info failed",
 			slave_info->sensor_name);
 		goto free_camera_info;
@@ -1046,6 +1106,8 @@ CSID_TG:
 	 * probed on this slot
 	 */
 	s_ctrl->is_probe_succeed = 1;
+	pr_err("NX549J camera diag: probe complete sensor=%s cam=%u entity=%s rc=%d\n",
+		slave_info->sensor_name, slave_info->camera_id, entity_name, rc);
 	return rc;
 
 camera_power_down:
@@ -1056,6 +1118,9 @@ free_power_settings:
 	kfree(s_ctrl->sensordata->power_info.power_setting);
 	kfree(s_ctrl->sensordata->power_info.power_down_setting);
 free_slave_info:
+	if (rc < 0 && slave_info)
+		pr_err("NX549J camera diag: probe cleanup sensor=%s cam=%u rc=%d\n",
+			slave_info->sensor_name, slave_info->camera_id, rc);
 	kfree(slave_info);
 	return rc;
 }

@@ -114,6 +114,63 @@
 	qcom,pronto@a21b000 {
 		memory-region = <&reloc_mem>;
 	};
+
+	i2c@78b6000 {
+		/delete-node/ wsa881x-i2c-codec@f;
+		/delete-node/ wsa881x-i2c-codec@45;
+	};
+
+	/delete-node/ wsa881x_analog_vi_pctrl;
+	/delete-node/ wsa881x_analog_clk_pctrl;
+	/delete-node/ wsa881x_analog_reset_pctrl;
+};
+
+&voice {
+	qcom,vote-bms;
+};
+
+&dai_mi2s5 {
+	qcom,msm-mi2s-rx-lines = <2>;
+	qcom,msm-mi2s-tx-lines = <4>;
+};
+
+&int_codec {
+	/delete-property/ asoc-wsa-codec-names;
+	/delete-property/ asoc-wsa-codec-prefixes;
+	/delete-property/ msm-vdd-wsa-switch-supply;
+	/delete-property/ qcom,msm-vdd-wsa-switch-voltage;
+	/delete-property/ qcom,msm-vdd-wsa-switch-current;
+
+	qcom,cdc-ext-amp-gpios = <&tlmm 25 0>;
+	qcom,msm-hs-micbias-type = "external";
+
+	qcom,audio-routing =
+		"RX_BIAS", "MCLK",
+		"SPK_RX_BIAS", "MCLK",
+		"INT_LDO_H", "MCLK",
+		"MIC BIAS External", "Handset Mic",
+		"MIC BIAS External2", "Headset Mic",
+		"MIC BIAS External", "Secondary Mic",
+		"AMIC1", "MIC BIAS External",
+		"AMIC2", "MIC BIAS External2",
+		"AMIC3", "MIC BIAS External",
+		"DMIC1", "MIC BIAS Internal1",
+		"MIC BIAS Internal1", "Digital Mic1",
+		"DMIC2", "MIC BIAS Internal1",
+		"MIC BIAS Internal1", "Digital Mic2",
+		"DMIC3", "MIC BIAS External";
+};
+
+&ext_codec {
+	/delete-property/ qcom,wsa-max-devs;
+	/delete-property/ qcom,wsa-devs;
+	/delete-property/ qcom,wsa-aux-dev-prefix;
+};
+
+&slim_msm {
+	tasha_codec {
+		/delete-node/ swr_master;
+	};
 };
 
 &wdog {

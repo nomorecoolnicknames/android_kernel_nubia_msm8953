@@ -62,7 +62,8 @@
 #define FALSE  0
 
 #define MAX_LANE_COUNT 4
-#define CSID_TIMEOUT msecs_to_jiffies(100)
+/* ZTE downstream keeps CSID IRQ waits longer; NX549J times out at 100ms. */
+#define CSID_TIMEOUT msecs_to_jiffies(1000)
 
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -247,7 +248,7 @@ static int msm_csid_reset(struct csid_device *csid_dev)
 		pr_err_ratelimited("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
 			__func__, csid_dev->pdev->id, irq);
 		if (irq & (0x1 << irq_bitshift)) {
-			rc = 1;
+			rc = 0;
 			CDBG("%s succeeded", __func__);
 		} else {
 			rc = 0;
@@ -258,6 +259,7 @@ static int msm_csid_reset(struct csid_device *csid_dev)
 			rc = -ETIMEDOUT;
 	} else {
 		CDBG("%s succeeded", __func__);
+		rc = 0;
 	}
 	return rc;
 }
@@ -530,9 +532,10 @@ static int msm_csid_init(struct csid_device *csid_dev, uint32_t *csid_version)
 	csid_dev->reg_ptr = NULL;
 
 	if (csid_dev->csid_state == CSID_POWER_UP) {
-		pr_err("%s: csid invalid state %d\n", __func__,
-			csid_dev->csid_state);
-		return -EINVAL;
+		*csid_version = csid_dev->hw_version;
+		pr_err("NX549J camera diag: %s duplicate init while powered, version=0x%x\n",
+			__func__, *csid_version);
+		return 0;
 	}
 
 	rc = cam_config_ahb_clk(NULL, 0, CAM_AHB_CLIENT_CSID,
@@ -641,9 +644,9 @@ static int msm_csid_release(struct csid_device *csid_dev)
 	uint32_t irq;
 
 	if (csid_dev->csid_state != CSID_POWER_UP) {
-		pr_err("%s: csid invalid state %d\n", __func__,
-			csid_dev->csid_state);
-		return -EINVAL;
+		pr_err("NX549J camera diag: %s duplicate release while state=%d\n",
+			__func__, csid_dev->csid_state);
+		return 0;
 	}
 
 	CDBG("%s:%d, hw_version = 0x%x\n", __func__, __LINE__,
@@ -703,9 +706,15 @@ static int32_t msm_csid_cmd(struct csid_device *csid_dev, void __user *arg)
 		return -EINVAL;
 	}
 	CDBG("%s cfgtype = %d\n", __func__, cdata->cfgtype);
+	pr_err("NX549J camera diag: %s cfgtype=%d state=%d id=%d\n",
+		__func__, cdata->cfgtype, csid_dev->csid_state,
+		csid_dev->pdev ? csid_dev->pdev->id : -1);
 	switch (cdata->cfgtype) {
 	case CSID_INIT:
 		rc = msm_csid_init(csid_dev, &cdata->cfg.csid_version);
+		pr_err("NX549J camera diag: %s init rc=%d version=0x%x state=%d\n",
+			__func__, rc, cdata->cfg.csid_version,
+			csid_dev->csid_state);
 		CDBG("%s csid version 0x%x\n", __func__,
 			cdata->cfg.csid_version);
 		break;
@@ -724,6 +733,7 @@ static int32_t msm_csid_cmd(struct csid_device *csid_dev, void __user *arg)
 		struct msm_camera_csid_params csid_params;
 		struct msm_camera_csid_vc_cfg *vc_cfg = NULL;
 		int i = 0;
+
 		if (copy_from_user(&csid_params,
 			(void *)cdata->cfg.csid_params,
 			sizeof(struct msm_camera_csid_params))) {
@@ -738,6 +748,13 @@ static int32_t msm_csid_cmd(struct csid_device *csid_dev, void __user *arg)
 			rc = -EINVAL;
 			break;
 		}
+		pr_err("NX549J camera diag: %s cfg lane_cnt=%u lane_assign=0x%x phy_sel=%u csi_clk=%u csi_3p_sel=%u num_cid=%u state=%d\n",
+			__func__, csid_params.lane_cnt,
+			csid_params.lane_assign, csid_params.phy_sel,
+			csid_params.csi_clk, csid_params.csi_3p_sel,
+			csid_params.lut_params.num_cid,
+			csid_dev->csid_state);
+
 		for (i = 0; i < csid_params.lut_params.num_cid; i++) {
 			vc_cfg = kzalloc(sizeof(struct msm_camera_csid_vc_cfg),
 				GFP_KERNEL);
@@ -759,6 +776,8 @@ static int32_t msm_csid_cmd(struct csid_device *csid_dev, void __user *arg)
 		csid_dev->current_csid_params = csid_params;
 		csid_dev->csid_sof_debug = SOF_DEBUG_DISABLE;
 		rc = msm_csid_config(csid_dev, &csid_params);
+		pr_err("NX549J camera diag: %s cfg rc=%d state=%d\n",
+			__func__, rc, csid_dev->csid_state);
 MEM_CLEAN:
 		for (i--; i >= 0; i--)
 			kfree(csid_params.lut_params.vc_cfg[i]);
@@ -846,10 +865,16 @@ static int32_t msm_csid_cmd32(struct csid_device *csid_dev, void __user *arg)
 	}
 
 	CDBG("%s cfgtype = %d\n", __func__, cdata->cfgtype);
+	pr_err("NX549J camera diag: %s cfgtype=%d state=%d id=%d\n",
+		__func__, cdata->cfgtype, csid_dev->csid_state,
+		csid_dev->pdev ? csid_dev->pdev->id : -1);
 	switch (cdata->cfgtype) {
 	case CSID_INIT:
 		rc = msm_csid_init(csid_dev, &cdata->cfg.csid_version);
 		arg32->cfg.csid_version = local_arg.cfg.csid_version;
+		pr_err("NX549J camera diag: %s init rc=%d version=0x%x state=%d\n",
+			__func__, rc, cdata->cfg.csid_version,
+			csid_dev->csid_state);
 		CDBG("%s csid version 0x%x\n", __func__,
 			cdata->cfg.csid_version);
 		break;
@@ -897,6 +922,12 @@ static int32_t msm_csid_cmd32(struct csid_device *csid_dev, void __user *arg)
 			rc = -EINVAL;
 			break;
 		}
+		pr_err("NX549J camera diag: %s cfg lane_cnt=%u lane_assign=0x%x phy_sel=%u csi_clk=%u csi_3p_sel=%u num_cid=%u state=%d\n",
+			__func__, csid_params.lane_cnt,
+			csid_params.lane_assign, csid_params.phy_sel,
+			csid_params.csi_clk, csid_params.csi_3p_sel,
+			csid_params.lut_params.num_cid,
+			csid_dev->csid_state);
 
 		for (i = 0; i < lut_par32.num_cid; i++) {
 			vc_cfg = kzalloc(sizeof(struct msm_camera_csid_vc_cfg),
@@ -924,6 +955,8 @@ static int32_t msm_csid_cmd32(struct csid_device *csid_dev, void __user *arg)
 			csid_params.lut_params.vc_cfg[i] = vc_cfg;
 		}
 		rc = msm_csid_config(csid_dev, &csid_params);
+		pr_err("NX549J camera diag: %s cfg rc=%d state=%d\n",
+			__func__, rc, csid_dev->csid_state);
 		csid_dev->current_csid_params = csid_params;
 
 MEM_CLEAN32:

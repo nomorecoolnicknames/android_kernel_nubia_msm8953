@@ -30,6 +30,7 @@ DEFINE_MSM_MUTEX(msm_actuator_mutex);
 #define PARK_LENS_MID_STEP 5
 #define PARK_LENS_SMALL_STEP 3
 #define MAX_QVALUE 4096
+#define NX549J_CFG_SET_ACTUATOR_NAME 8
 
 static struct v4l2_file_operations msm_actuator_v4l2_subdev_fops;
 static int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl);
@@ -373,6 +374,11 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 	enum msm_camera_i2c_reg_addr_type save_addr_type;
 
 	CDBG("Enter\n");
+	if (size > 0)
+		pr_err("NX549J camera diag: init_focus size=%u first addr=0x%x addr_type=%d data=0x%x data_type=%d op=%d delay=%u\n",
+			size, settings[0].reg_addr, settings[0].addr_type,
+			settings[0].reg_data, settings[0].data_type,
+			settings[0].i2c_operation, settings[0].delay);
 
 	save_addr_type = a_ctrl->i2c_client.addr_type;
 	for (i = 0; i < size; i++) {
@@ -431,6 +437,7 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 	 * settings are written.
 	 */
 	a_ctrl->i2c_client.addr_type = save_addr_type;
+	pr_err("NX549J camera diag: init_focus rc=%d\n", rc);
 	CDBG("Exit\n");
 	return rc;
 }
@@ -909,6 +916,10 @@ static int32_t msm_actuator_bivcm_init_step_table(
 	uint32_t qvalue = 0;
 
 	CDBG("Enter\n");
+	pr_err("NX549J camera diag: bivcm step table name=%s data_size=%u initial=%d total=%u region_size=%u\n",
+		a_ctrl->act_name, set_info->actuator_params.data_size,
+		set_info->af_tuning_params.initial_code,
+		set_info->af_tuning_params.total_steps, a_ctrl->region_size);
 
 	for (; data_size > 0; data_size--) {
 		max_code_size *= 2;
@@ -953,14 +964,27 @@ static int32_t msm_actuator_bivcm_init_step_table(
 			return -EINVAL;
 		}
 		qvalue = a_ctrl->region_params[region_index].qvalue;
+		pr_err("NX549J camera diag: bivcm region[%u] near=%u far=%u code_per_step=%u qvalue=%u\n",
+			region_index,
+			a_ctrl->region_params[region_index].step_bound[MOVE_NEAR],
+			a_ctrl->region_params[region_index].step_bound[MOVE_FAR],
+			a_ctrl->region_params[region_index].code_per_step,
+			qvalue);
 		for (; step_index <= step_boundary;
 			step_index++) {
 			if (qvalue > 1 && qvalue <= MAX_QVALUE)
 				cur_code = step_index * code_per_step / qvalue;
 			else
 				cur_code = step_index * code_per_step;
-			cur_code = (set_info->af_tuning_params.initial_code +
-				cur_code) & mask;
+			if ((strncmp(a_ctrl->act_name, "bu64297_main",
+				MAX_ACT_NAME_SIZE) == 0) ||
+				(strncmp(a_ctrl->act_name, "bu64297_aux",
+				MAX_ACT_NAME_SIZE) == 0))
+				cur_code = (set_info->af_tuning_params.initial_code +
+					cur_code) & mask;
+			else
+				cur_code = (set_info->af_tuning_params.initial_code -
+					cur_code) & mask;
 			if (cur_code < max_code_size)
 				a_ctrl->step_position_table[step_index] =
 					cur_code;
@@ -1292,6 +1316,22 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 	struct msm_camera_cci_client *cci_client = NULL;
 
 	CDBG("Enter\n");
+	pr_err("NX549J camera diag: set_param name=%s act=%d reg_tbl=%u data=%u init=%u i2c=0x%x freq=%d addr_type=%d data_type=%d total=%u region=%u init_code=%d pwd=%u region_ptr=%pK reg_ptr=%pK init_ptr=%pK\n",
+		a_ctrl->act_name, set_info->actuator_params.act_type,
+		set_info->actuator_params.reg_tbl_size,
+		set_info->actuator_params.data_size,
+		set_info->actuator_params.init_setting_size,
+		set_info->actuator_params.i2c_addr,
+		set_info->actuator_params.i2c_freq_mode,
+		set_info->actuator_params.i2c_addr_type,
+		set_info->actuator_params.i2c_data_type,
+		set_info->af_tuning_params.total_steps,
+		set_info->af_tuning_params.region_size,
+		set_info->af_tuning_params.initial_code,
+		set_info->af_tuning_params.pwd_step,
+		set_info->af_tuning_params.region_params,
+		set_info->actuator_params.reg_tbl_params,
+		set_info->actuator_params.init_settings);
 
 	for (i = 0; i < ARRAY_SIZE(actuators); i++) {
 		if (set_info->actuator_params.act_type ==
@@ -1326,6 +1366,12 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 		pr_err("Error copying region_params\n");
 		return -EFAULT;
 	}
+	if (a_ctrl->region_size > 0)
+		pr_err("NX549J camera diag: region[0] near=%u far=%u code_per_step=%u qvalue=%u\n",
+			a_ctrl->region_params[0].step_bound[MOVE_NEAR],
+			a_ctrl->region_params[0].step_bound[MOVE_FAR],
+			a_ctrl->region_params[0].code_per_step,
+			a_ctrl->region_params[0].qvalue);
 	if (a_ctrl->act_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		cci_client = a_ctrl->i2c_client.cci_client;
 		cci_client->sid =
@@ -1371,8 +1417,17 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 		sizeof(struct msm_actuator_reg_params_t))) {
 		kfree(a_ctrl->i2c_reg_tbl);
 		a_ctrl->i2c_reg_tbl = NULL;
+		pr_err("NX549J camera diag: Error copying reg_tbl\n");
 		return -EFAULT;
 	}
+	if (a_ctrl->reg_tbl_size > 0)
+		pr_err("NX549J camera diag: reg_tbl[0] type=%d addr=0x%x data=0x%x addr_type=%u data_type=%u delay=%u\n",
+			a_ctrl->reg_tbl[0].reg_write_type,
+			a_ctrl->reg_tbl[0].reg_addr,
+			a_ctrl->reg_tbl[0].reg_data,
+			a_ctrl->reg_tbl[0].addr_type,
+			a_ctrl->reg_tbl[0].data_type,
+			a_ctrl->reg_tbl[0].delay);
 
 	if (set_info->actuator_params.init_setting_size &&
 		set_info->actuator_params.init_setting_size
@@ -1398,6 +1453,13 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 				pr_err("Error copying init_settings\n");
 				return -EFAULT;
 			}
+			pr_err("NX549J camera diag: init_settings[0] addr=0x%x addr_type=%d data=0x%x data_type=%d op=%d delay=%u\n",
+				init_settings[0].reg_addr,
+				init_settings[0].addr_type,
+				init_settings[0].reg_data,
+				init_settings[0].data_type,
+				init_settings[0].i2c_operation,
+				init_settings[0].delay);
 			rc = a_ctrl->func_tbl->actuator_init_focus(a_ctrl,
 				set_info->actuator_params.init_setting_size,
 				init_settings);
@@ -1414,9 +1476,12 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 	/* Park lens data */
 	a_ctrl->park_lens = set_info->actuator_params.park_lens;
 	a_ctrl->initial_code = set_info->af_tuning_params.initial_code;
-	if (a_ctrl->func_tbl->actuator_init_step_table)
+	if (a_ctrl->func_tbl->actuator_init_step_table) {
 		rc = a_ctrl->func_tbl->
 			actuator_init_step_table(a_ctrl, set_info);
+		pr_err("NX549J camera diag: actuator_init_step_table rc=%d\n",
+			rc);
+	}
 
 	a_ctrl->curr_step_pos = 0;
 	a_ctrl->curr_region_index = 0;
@@ -1455,12 +1520,24 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 	mutex_lock(a_ctrl->actuator_mutex);
 	CDBG("Enter\n");
 	CDBG("%s type %d\n", __func__, cdata->cfgtype);
+	pr_err("NX549J camera diag: actuator cfgtype=%d state=%d\n",
+		cdata->cfgtype, a_ctrl->actuator_state);
 
 	if (cdata->cfgtype != CFG_ACTUATOR_INIT &&
 		cdata->cfgtype != CFG_ACTUATOR_POWERUP &&
+		cdata->cfgtype != NX549J_CFG_SET_ACTUATOR_NAME &&
 		a_ctrl->actuator_state == ACT_DISABLE_STATE) {
+		if (cdata->cfgtype == CFG_ACTUATOR_POWERDOWN) {
+			pr_err("NX549J camera diag: actuator powerdown while disabled accepted\n");
+			mutex_unlock(a_ctrl->actuator_mutex);
+			pr_err("NX549J camera diag: actuator cfg done cfgtype=%d state=%d rc=0\n",
+				cdata->cfgtype, a_ctrl->actuator_state);
+			return 0;
+		}
 		pr_err("actuator disabled %d\n", rc);
 		mutex_unlock(a_ctrl->actuator_mutex);
+		pr_err("NX549J camera diag: actuator cfg done cfgtype=%d state=%d rc=%d\n",
+			cdata->cfgtype, a_ctrl->actuator_state, rc);
 		return rc;
 	}
 
@@ -1480,6 +1557,14 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 		rc = msm_actuator_set_param(a_ctrl, &cdata->cfg.set_info);
 		if (rc < 0)
 			pr_err("init table failed %d\n", rc);
+		break;
+	case NX549J_CFG_SET_ACTUATOR_NAME:
+		memcpy(a_ctrl->act_name, cdata->cfg.act_name,
+			sizeof(a_ctrl->act_name));
+		a_ctrl->act_name[sizeof(a_ctrl->act_name) - 1] = '\0';
+		pr_err("NX549J camera diag: actuator name=%s\n",
+			a_ctrl->act_name);
+		rc = 0;
 		break;
 
 	case CFG_SET_DEFAULT_FOCUS:
@@ -1524,6 +1609,8 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 		break;
 	}
 	mutex_unlock(a_ctrl->actuator_mutex);
+	pr_err("NX549J camera diag: actuator cfg done cfgtype=%d state=%d rc=%d\n",
+		cdata->cfgtype, a_ctrl->actuator_state, rc);
 	CDBG("Exit\n");
 	return rc;
 }
@@ -1656,8 +1743,11 @@ static long msm_actuator_subdev_do_ioctl(
 	void *parg = arg;
 	long rc;
 
-	switch (cmd) {
-	case VIDIOC_MSM_ACTUATOR_CFG32:
+	if (is_compat_task() && _IOC_TYPE(cmd) == 'V' &&
+		_IOC_NR(cmd) == BASE_VIDIOC_PRIVATE + 6) {
+		memset(&actuator_data, 0, sizeof(actuator_data));
+		pr_err("NX549J camera diag: actuator compat cfg cmd=0x%x size=%u cfgtype=%d\n",
+			cmd, _IOC_SIZE(cmd), u32->cfgtype);
 		cmd = VIDIOC_MSM_ACTUATOR_CFG;
 		switch (u32->cfgtype) {
 		case CFG_SET_ACTUATOR_INFO:
@@ -1730,6 +1820,13 @@ static long msm_actuator_subdev_do_ioctl(
 
 			parg = &actuator_data;
 			break;
+		case CFG_SET_ACTUATOR_NAME:
+			actuator_data.cfgtype = u32->cfgtype;
+			actuator_data.is_af_supported = u32->is_af_supported;
+			memcpy(actuator_data.cfg.act_name, u32->cfg.act_name,
+				sizeof(u32->cfg.act_name));
+			parg = &actuator_data;
+			break;
 		case CFG_SET_DEFAULT_FOCUS:
 		case CFG_MOVE_FOCUS:
 			actuator_data.cfgtype = u32->cfgtype;
@@ -1763,13 +1860,13 @@ static long msm_actuator_subdev_do_ioctl(
 			parg = &actuator_data;
 			break;
 		}
-		break;
-	case VIDIOC_MSM_ACTUATOR_CFG:
-		pr_err("%s: invalid cmd 0x%x received\n", __func__, cmd);
-		return -EINVAL;
 	}
 
 	rc = msm_actuator_subdev_ioctl(sd, cmd, parg);
+	if (is_compat_task() && _IOC_TYPE(cmd) == 'V' &&
+		_IOC_NR(cmd) == BASE_VIDIOC_PRIVATE + 6)
+		pr_err("NX549J camera diag: actuator compat done cfgtype=%d rc=%ld\n",
+			u32->cfgtype, rc);
 
 	switch (cmd) {
 

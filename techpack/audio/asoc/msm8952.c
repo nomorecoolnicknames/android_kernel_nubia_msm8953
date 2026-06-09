@@ -79,6 +79,10 @@ int ext_pa_gpio = 0;
 int ext_pa_status = 0;
 #endif
 
+#ifdef CONFIG_MACH_NUBIA_NX549J
+static int nx549j_ext_pa_power_ctrl = 9;
+#endif
+
 /*
  * Android L spec
  * Need to report LINEIN
@@ -325,7 +329,12 @@ done:
 int is_ext_spk_gpio_support(struct platform_device *pdev,
 			struct msm_asoc_mach_data *pdata)
 {
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	const char *spk_ext_pa = "qcom,cdc-ext-amp-gpios";
+#else
 	const char *spk_ext_pa = "qcom,msm-spk-ext-pa";
+#endif
+	int ret;
 
 	pr_debug("%s:Enter\n", __func__);
 
@@ -344,12 +353,48 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 #ifdef CONFIG_MACH_XIAOMI_TISSOT
 		ext_pa_gpio = pdata->spk_ext_pa_gpio;
 #endif
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		ret = gpio_request(pdata->spk_ext_pa_gpio, "ext_pa_ctrl_pin");
+		if (ret)
+			pr_err("%s: ext pa control gpio request failed %d\n",
+				__func__, ret);
+		gpio_direction_output(pdata->spk_ext_pa_gpio, 0);
+#endif
 	}
 #ifdef CONFIG_MACH_XIAOMI_MIDO
 	gpio_direction_output(pdata->spk_ext_pa_gpio, 0);
 #endif
 	return 0;
 }
+
+#ifdef CONFIG_MACH_NUBIA_NX549J
+static bool nx549j_aw8736_ext_spk_power_amp_on(int gpio, int value)
+{
+	int curr;
+	int count;
+	int latch;
+
+	if (!gpio_is_valid(gpio)) {
+		pr_err("%s: Invalid gpio: %d\n", __func__, gpio);
+		return false;
+	}
+
+	curr = gpio_get_value_cansleep(gpio);
+	if (curr != value) {
+		latch = value;
+		if (value) {
+			for (count = 0; count < nx549j_ext_pa_power_ctrl; count++) {
+				gpio_direction_output(gpio, latch);
+				latch = !latch;
+			}
+		} else {
+			gpio_direction_output(gpio, value);
+		}
+	}
+
+	return true;
+}
+#endif
 
 static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 {
@@ -374,6 +419,11 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 
 	pr_debug("%s: %s external speaker PA\n", __func__,
 		enable ? "Enable" : "Disable");
+
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	return nx549j_aw8736_ext_spk_power_amp_on(
+			pdata->spk_ext_pa_gpio, enable) ? 0 : -EINVAL;
+#endif
 
 	if (enable) {
 #ifdef CONFIG_MACH_XIAOMI_MIDO
@@ -3133,7 +3183,11 @@ static int msm8952_asoc_machine_probe(struct platform_device *pdev)
 	const char *wsa = "asoc-wsa-codec-names";
 	const char *type = NULL;
 	const char *ext_pa_str = NULL;
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	const char *spk_ext_pa = "qcom,cdc-ext-amp-gpios";
+#else
 	const char *spk_ext_pa = "qcom,msm-spk-ext-pa";
+#endif
 	int num_strings;
 	int id, i, val;
 	int ret = 0;
@@ -3332,8 +3386,10 @@ parse_mclk_freq:
 			__func__, spk_ext_pa);
 	}
 
+#ifndef CONFIG_MACH_NUBIA_NX549J
 	pdata->spk_ext_pa_gpio_p = of_parse_phandle(pdev->dev.of_node,
 							"qcom,cdc-ext-pa-gpios", 0);
+#endif
 
 	ret = is_us_eu_switch_gpio_support(pdev, pdata);
 	if (ret < 0) {

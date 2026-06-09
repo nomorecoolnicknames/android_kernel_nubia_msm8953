@@ -13,6 +13,9 @@
 #define pr_fmt(fmt) "MSM-SENSOR-INIT %s:%d " fmt "\n", __func__, __LINE__
 
 /* Header files */
+#include <linux/ioctl.h>
+#include <linux/sched.h>
+
 #include "msm_sensor_init.h"
 #include "msm_sensor_driver.h"
 #include "msm_sensor.h"
@@ -74,29 +77,42 @@ static int32_t msm_sensor_driver_cmd(struct msm_sensor_init_t *s_init,
 		return -EINVAL;
 	}
 
+	pr_err("NX549J camera diag: init cfgtype %d status %d\n",
+		cfg->cfgtype, s_init->module_init_status);
+
 	switch (cfg->cfgtype) {
 	case CFG_SINIT_PROBE:
+		pr_err("NX549J camera diag: CFG_SINIT_PROBE enter\n");
 		mutex_lock(&s_init->imutex);
 		s_init->module_init_status = 0;
 		rc = msm_sensor_driver_probe(cfg->cfg.setting,
 			&cfg->probed_info,
 			cfg->entity_name);
 		mutex_unlock(&s_init->imutex);
+		pr_err("NX549J camera diag: CFG_SINIT_PROBE exit rc %d status %d entity %s\n",
+			rc, s_init->module_init_status, cfg->entity_name);
 		if (rc < 0)
 			pr_err("%s failed (non-fatal) rc %d", __func__, rc);
 		break;
 
 	case CFG_SINIT_PROBE_DONE:
+		pr_err("NX549J camera diag: CFG_SINIT_PROBE_DONE status %d -> 1\n",
+			s_init->module_init_status);
 		s_init->module_init_status = 1;
 		wake_up(&s_init->state_wait);
 		break;
 
 	case CFG_SINIT_PROBE_WAIT_DONE:
+		pr_err("NX549J camera diag: CFG_SINIT_PROBE_WAIT_DONE enter status %d\n",
+			s_init->module_init_status);
 		rc = msm_sensor_wait_for_probe_done(s_init);
+		pr_err("NX549J camera diag: CFG_SINIT_PROBE_WAIT_DONE exit rc %d status %d\n",
+			rc, s_init->module_init_status);
 		break;
 
 	default:
-		pr_err("default");
+		pr_err("NX549J camera diag: unknown cfgtype %d\n",
+			cfg->cfgtype);
 		break;
 	}
 
@@ -121,8 +137,13 @@ static long msm_sensor_init_subdev_ioctl(struct v4l2_subdev *sd,
 		rc = msm_sensor_driver_cmd(s_init, arg);
 		break;
 
+	case MSM_SD_SHUTDOWN:
+		return 0;
+
 	default:
-		pr_err_ratelimited("default\n");
+		pr_err_ratelimited("NX549J camera diag: unknown ioctl cmd=0x%x type=0x%x nr=%u size=%u dir=%u comm=%s pid=%d\n",
+			cmd, _IOC_TYPE(cmd), _IOC_NR(cmd), _IOC_SIZE(cmd),
+			_IOC_DIR(cmd), current->comm, current->pid);
 		break;
 	}
 
@@ -130,6 +151,49 @@ static long msm_sensor_init_subdev_ioctl(struct v4l2_subdev *sd,
 }
 
 #ifdef CONFIG_COMPAT
+#define NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX 12
+struct nx549j_stock_msm_sensor_info32 {
+	char     sensor_name[MAX_SENSOR_NAME];
+	uint32_t session_id;
+	int32_t  subdev_id[NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX];
+	int32_t  subdev_intf[NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX];
+	uint8_t  is_mount_angle_valid;
+	uint32_t sensor_mount_angle;
+	int modes_supported;
+	enum camb_position_t position;
+};
+
+struct nx549j_stock_sensor_init_cfg_data32 {
+	enum msm_sensor_init_cfg_type_t cfgtype;
+	struct nx549j_stock_msm_sensor_info32 probed_info;
+	char entity_name[MAX_SENSOR_NAME];
+	union {
+		compat_uptr_t setting;
+	} cfg;
+};
+
+#define NX549J_STOCK_VIDIOC_MSM_SENSOR_INIT_CFG32 \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 10, \
+		struct nx549j_stock_sensor_init_cfg_data32)
+
+static void nx549j_copy_sensor_info_to_stock32(
+	struct nx549j_stock_msm_sensor_info32 *dst,
+	const struct msm_sensor_info_t *src)
+{
+	int i;
+
+	strlcpy(dst->sensor_name, src->sensor_name, sizeof(dst->sensor_name));
+	dst->session_id = src->session_id;
+	for (i = 0; i < NX549J_STOCK_SENSOR_INFO_SUB_MODULE_MAX; i++) {
+		dst->subdev_id[i] = src->subdev_id[i];
+		dst->subdev_intf[i] = src->subdev_intf[i];
+	}
+	dst->is_mount_angle_valid = src->is_mount_angle_valid;
+	dst->sensor_mount_angle = src->sensor_mount_angle;
+	dst->modes_supported = src->modes_supported;
+	dst->position = src->position;
+}
+
 static long msm_sensor_init_subdev_do_ioctl(
 	struct file *file, unsigned int cmd, void *arg)
 {
@@ -156,7 +220,33 @@ static long msm_sensor_init_subdev_do_ioctl(
 		strlcpy(u32->entity_name, sensor_init_data.entity_name,
 			sizeof(sensor_init_data.entity_name));
 		return 0;
+	case NX549J_STOCK_VIDIOC_MSM_SENSOR_INIT_CFG32:
+	{
+		struct nx549j_stock_sensor_init_cfg_data32 *stock32 =
+			(struct nx549j_stock_sensor_init_cfg_data32 *)arg;
+
+		memset(&sensor_init_data, 0, sizeof(sensor_init_data));
+		sensor_init_data.cfgtype = stock32->cfgtype;
+		sensor_init_data.cfg.setting = compat_ptr(stock32->cfg.setting);
+		pr_err("NX549J camera diag: stock compat ioctl alias cmd=0x%x cfgtype %d\n",
+			cmd, stock32->cfgtype);
+		rc = msm_sensor_init_subdev_ioctl(sd,
+			VIDIOC_MSM_SENSOR_INIT_CFG, &sensor_init_data);
+		if (rc < 0) {
+			pr_err("%s:%d stock VIDIOC_MSM_SENSOR_INIT_CFG failed (non-fatal)",
+				__func__, __LINE__);
+			return rc;
+		}
+		nx549j_copy_sensor_info_to_stock32(&stock32->probed_info,
+			&sensor_init_data.probed_info);
+		strlcpy(stock32->entity_name, sensor_init_data.entity_name,
+			sizeof(stock32->entity_name));
+		return 0;
+	}
 	default:
+		pr_err_ratelimited("NX549J camera diag: compat passthrough ioctl cmd=0x%x type=0x%x nr=%u size=%u dir=%u comm=%s pid=%d\n",
+			cmd, _IOC_TYPE(cmd), _IOC_NR(cmd), _IOC_SIZE(cmd),
+			_IOC_DIR(cmd), current->comm, current->pid);
 		return msm_sensor_init_subdev_ioctl(sd, cmd, arg);
 	}
 }

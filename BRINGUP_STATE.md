@@ -1,6 +1,6 @@
 # NX549J 4.9 Bring-up State
 
-Last updated: 2026-06-07T16:10:00-05:00
+Last updated: 2026-06-08T17:11:53-05:00
 
 ## Objective
 
@@ -9,6 +9,146 @@ diagnosable state. The current priority is to recover an automatic reboot/reset
 signal from the target 4.9 kernel, then use that signal to bracket how far
 early boot gets before returning to pstore/ramoops or another recovery-readable
 persistence path.
+
+## 2026-06-08 attempt226 NFC pinctrl clock-request plus CSID idempotent init
+
+Patch category: PROPER-FIX / BOOT-ONLY / RUNTIME-TEST-PENDING.
+
+Facts from attempt225 runtime:
+- Android booted after attempt225 boot+vendor flash:
+  `Linux localhost 4.9.227-perf+ #193 SMP PREEMPT Mon Jun 8 17:19:25 CDT
+  2026 aarch64`, `sys.boot_completed=1`.
+- NFC attempt225 proved `gpio_direction_input(clk_gpio=1015)` fails with `-19`
+  and NACKs remain. The broadcom node was missing the inherited
+  `&nfc_clk_default` active pinctrl entry used by the deleted Qualcomm `nq@28`
+  node.
+- Camera attempt225 proved the zero-size stop-setting kernel tolerance did not
+  trigger; the `sensor_set_stop_stream_settings: failed` marker is likely in
+  closed userspace camera module code.
+- Camera is still blocked by CSID/session ordering: repeated `CSID_INIT` while
+  the CSID device is already `CSID_POWER_UP` returns `-EINVAL`, causing
+  `csid_open: VIDIOC_MSM_CSID_IO_CFG failed Invalid argument`, followed by
+  query-capability timeouts.
+
+Kernel changes for attempt226:
+- `arch/arm64/boot/dts/qcom/msm8953-mtp-nx549j.dts`: add
+  `&nfc_clk_default` to the Broadcom NFC active pinctrl state.
+- `drivers/nfc/bcm2079x-i2c.c`: remove the non-working PM8953 GPIO2 gpiolib
+  direction call and leave clock-request setup to pinctrl.
+- `drivers/media/platform/msm/camera_v2-legacy/sensor/csid/msm_csid.c`: make
+  duplicate `CSID_INIT` while already powered return the current CSID version
+  instead of `-EINVAL`, and make duplicate release while already down return 0.
+
+Expected next marker:
+- NFC should not log `gpio_direction_input(clk_gpio=1015) failed`; if NACKs
+  remain, test `clk_bb_clk2` instead of `clk_bb_clk2_pin`.
+- Camera should log `duplicate init while powered` instead of failing
+  `csid_open` with `-EINVAL`; then follow the next camera blocker in fresh
+  runtime logs.
+
+Rollback condition:
+- Revert NFC pinctrl only on boot/display/touch/audio regression or evidence
+  that PM8953 GPIO2 clock-request must stay inactive for Broadcom NFC.
+- Revert CSID idempotent init/release only if it creates camera power or stream
+  teardown regressions.
+
+## 2026-06-08 attempt225 NFC clk-gpio restore plus camera stop-setting tolerance
+
+Patch category: PROPER-FIX / BOOT+VENDOR / RUNTIME-TEST-PENDING.
+
+Facts from attempt224 runtime:
+- Android booted with attempt224 boot image:
+  `Linux localhost 4.9.227-perf+ #192 SMP PREEMPT Mon Jun 8 16:54:55 CDT
+  2026 aarch64`, `sys.boot_completed=1`.
+- NFC active-low wake is now correct at power-on
+  (`power_on: gpio readback en=1 wake=0 irq=1`), but the Broadcom NFCC still
+  NACKs every tested I2C address. The DTS declares `broadcom,clk-gpio` on
+  PM8953 GPIO2 and highwaystar/stock configures that clock-request GPIO as
+  input, but the current port only read the property.
+- Camera sensors probe and match (`imx318`, `imx258`), but provider init still
+  fails when kernel/userspace camera capability exchange times out. `Bad caps`
+  follows that timeout, so do not fake querycap fields in the kernel.
+- `csid_open: VIDIOC_MSM_CSID_IO_CFG failed Invalid argument` and
+  `mm-qcamera-daemon` crashes remain the important camera failure chain if
+  optional imglib noise is reduced.
+- The camera subagent found that `CSID_CFG` is not reached in the fresh
+  attempt224 capture. A concrete earlier failure is
+  `sensor_set_stop_stream_settings: failed` followed by `SENSOR_INIT rc:-5`,
+  while kernel code rejects zero-size stop-stream settings.
+
+Kernel change for attempt225:
+- `drivers/nfc/bcm2079x-i2c.c`: restore the highwaystar/stock
+  `broadcom,clk-gpio` handling by requesting the PM8953 clock-request GPIO and
+  configuring it as input before NFC power-on; keep `ref_clk` prepare/enable
+  logging but do not use `clk_set_rate` on the RPM XO-buffer pseudo-rate.
+- `drivers/media/platform/msm/camera_v2-legacy/sensor/msm_sensor.c`: accept
+  zero-size `CFG_SET_STOP_STREAM_SETTING` as an empty cleanup setting and skip
+  stop-stream I2C writes when there is no register table.
+
+Vendor-side companion change:
+- `device/nubia/msm8953-common/vendor.prop`: disables PAAF / TruePortrait /
+  SeeMore optional camera paths so the next runtime can isolate whether the
+  missing optional modules contribute to `mm-qcamera-daemon` crashes.
+
+Expected next marker:
+- NFC dmesg should contain `configured clk_gpio=<N> as input` before the
+  power-on/NACK sequence.
+- Camera should either move past `sensor_set_stop_stream_settings: failed` or
+  prove the persistent blocker is still CSID/session/event response.
+
+Rollback condition:
+- Revert the NFC `clk-gpio` patch only if it creates boot/display/touch/audio
+  regression or logs prove PM8953 GPIO2 must not be requested by this driver.
+- Revert the camera stop-setting tolerance if it causes sensor power-down or
+  stream-off regressions, or if logs prove userspace was not actually passing
+  an empty stop setting.
+- Revert camera props if provider behavior worsens or logs prove the optional
+  paths are needed before basic camera enumeration.
+
+## 2026-06-08 attempt224 CSID timeout plus NFC refclk diagnostic
+
+Patch category: PROPER-FIX / BOOT-ONLY / RUNTIME-TEST-PENDING.
+
+Facts:
+- attempt223 proved the previous `wake_gpio=1` power-on test executes but does
+  not make the Broadcom NFCC answer I2C.
+- attempt223 also proved the camera stack still reaches sensor enumeration and
+  then fails around CSID/session open.
+
+Kernel changes:
+- `drivers/media/platform/msm/camera_v2-legacy/sensor/csid/msm_csid.c`:
+  `CSID_TIMEOUT` is extended from 100 ms to 1000 ms, matching the downstream
+  ZTE-style longer CSID wait, and native/compat CSID init/config paths log
+  cfgtype, state, id, lane parameters, cid count, version, and rc.
+- `drivers/nfc/bcm2079x-i2c.c`: `BCMNFC_POWER_CTL(1)` now drives
+  `en_gpio=1` with active-low `wake_gpio=0`, while `ref_clk` prepare/enable
+  logs the clock rate.
+
+Expected next marker:
+- If camera still fails, dmesg should contain `NX549J camera diag` CSID lines
+  that identify whether the remaining failure is timeout, invalid config,
+  state ordering, or lane/cid data.
+- If NFC still NACKs, use the new `ref_clk` rate plus GPIO readback to decide
+  the next reset/clock/pinctrl test.
+
+## 2026-06-08 attempt223 NFC wake runtime test
+
+Patch category: PROPER-FIX / RUNTIME-TEST-PENDING.
+
+Facts:
+- attempt222 runtime proved that userspace loaded
+  `BCMI2CNFC_ADDRESS=0x00`, but the first power-on GPIO readback was
+  `en=1 wake=0 irq=1`.
+- The Broadcom NFCC then NACKed the address scan and the NFC process aborted
+  from the NCI stack while waiting for build-info/open response.
+- The kernel NFC driver now routes `BCMNFC_POWER_CTL(1)` through a shared helper
+  that asserts `wake_gpio` together with `en_gpio`, and deasserts both on power
+  off.
+
+Expected next marker:
+- Runtime dmesg should show `power_on: gpio readback en=1 wake=1`. If I2C still
+  NACKs, keep the wake assertion and continue at reset timing/address sequence
+  instead of reverting to `wake=0`.
 
 ## 2026-06-07 attempt168 full ROM boot verified
 
@@ -7840,5 +7980,249 @@ Final packaged artifact for this batch:
   - TWRP v2 alive check:
     `/srv/forge/work/nx549j-preserve/captures/twrp-rescue-alive-check-20260607_1415`
 - Next build rule:
-  attempt166 must be rebuilt from source with no `frgmark.raw_wdt=1` in the
-  unpacked boot cmdline before flashing any new full ROM.
+ attempt166 must be rebuilt from source with no `frgmark.raw_wdt=1` in the
+ unpacked boot cmdline before flashing any new full ROM.
+
+2026-06-08T10:20Z attempt193 highwaystar audio PA restore:
+
+- Patch category: PROPER-FIX / AUDIO-PA source restore.
+- User-visible result:
+  the user confirmed physical speaker audio works after flashing attempt193 and
+  running the direct WAV test.
+- Tested artifact:
+  `/srv/forge/work/nx549j-preserve/release-attempt193-20260608-highwaystar-audio-pa/boot.img`
+  SHA-256 `450daebf9f0d168f075c689243c8ee934bc4d0a38159c4bf18fc921a42bc7da9`.
+- Matching kernel evidence:
+  `System.map` SHA-256
+  `8553760ea4ebf448752192fed9f1ed8cf06e9976329081766ee8246b455399cc`;
+  generated `.config` has `CONFIG_MACH_NUBIA_NX549J=y`,
+  `CONFIG_MACH_XIAOMI_MSM8953=y`, and leaves
+  `CONFIG_MACH_XIAOMI_MIDO` / `CONFIG_MACH_XIAOMI_TISSOT` unset.
+- Source-backed cause:
+  the current 4.9 audio base inherited Xiaomi/Tissot external-speaker wiring.
+  Highwaystar stock NX549 source uses `qcom,cdc-ext-amp-gpios = <&tlmm 25 0>`
+  and lineout speaker routing, while the current tree had added
+  `qcom,msm-spk-ext-pa` / `qcom,cdc-ext-pa-gpios` and gated
+  `Ext Spk <- LINEOUT PA` behind Xiaomi MIDO/TISSOT conditionals.
+- Source changes:
+  `techpack/audio/asoc/msm8952.c` now uses `qcom,cdc-ext-amp-gpios` for
+  `CONFIG_MACH_NUBIA_NX549J` and applies the highwaystar AW8736-style GPIO
+  latch sequence; `techpack/audio/asoc/codecs/sdm660_cdc/msm-analog-cdc.c`
+  exposes the `Ext Spk <- LINEOUT PA` route for Nubia; NX549J DTS keeps only
+  `qcom,cdc-ext-amp-gpios` for this PA path.
+- Userspace mixer:
+  live `/vendor/etc/mixer_paths_mtp.xml` SHA-256 was
+  `89e43a065ecc98f056ac88f1e791ca424300d885100f261af2b1831ba2a793dc`, matching
+  the highwaystar lineout/RX3 speaker route.
+- Runtime verification:
+  after `fastboot flash boot`, Android booted with `sys.boot_completed=1` and
+  `Linux localhost 4.9.227-perf+ #157 SMP PREEMPT Mon Jun 8 05:16:18 CDT 2026`.
+  Direct `tinyplay` on card0 device0 reported `state: RUNNING`; tinymix showed
+  `RX3 MIX1 INP1=RX1`, `RX3 Digital Volume=84`, `LINE_OUT=Switch`,
+  and `PRI_MI2S_RX Audio Mixer MultiMedia1=On`.
+- Residual note:
+  dmesg logs repeated `is_ext_spk_gpio_support: ext pa control gpio request
+  failed -16` after the first PA owner grabs GPIO25. Audio is confirmed working,
+  so treat this as log cleanup unless later captures show PA ownership races.
+- Next layers:
+  touch regressed after a previously working boot and must be compared back to
+  the known working touch commit/artifact; display backlight still glows when
+  screen is off and should be handled after the touch source delta is isolated.
+
+2026-06-08T12:40Z attempt197 camera diagnostic result / attempt198 eeprom-name DTS fix:
+
+- Patch category: PROPER-FIX / CAMERA-DT eeprom contract.
+- Current touch status:
+  touch testing is deferred by the user; do not use touch as the pass/fail gate
+  for this attempt.
+- Tested attempt197 artifact:
+  `/srv/forge/work/nx549j-preserve/release-attempt197-20260608-camera-sensor-diag/boot.img`
+  SHA-256 `c7fc328f31ea73a71c947be19085a4d0474095994897a61b50bdcfdd7fd56f90`.
+- Matching attempt197 kernel evidence:
+  `Image.gz-dtb` SHA-256
+  `4e8aeb92a6470884e1ff438ddc9a11dd04e0756dd9cda8162ccbc5d88ce921fa`;
+  `System.map` SHA-256
+  `d04e5d9f1be5912cf056b3ce6f35f39f61f7f7af5f560094e0748f2c5987151d`.
+- Runtime capture:
+  `/srv/forge/work/nx549j-preserve/captures/attempt197-camera-sensor-diag-20260608_0718`.
+- FACT:
+  attempt197 booted Android with `sys.boot_completed=1` and
+  `Linux localhost 4.9.227-perf+ #162 SMP PREEMPT Mon Jun 8 07:14:30 CDT
+  2026 aarch64`.
+- FACT:
+  camera provider still reports `Number of camera devices: 0`; logcat reports
+  `sensor_probe: [imx318] probe failed` and `sensor_probe: [imx258] probe
+  failed`.
+- FACT:
+  dmesg reports `msm_eeprom_platform_probe failed 1722` twice before camera
+  provider probing.
+- FACT:
+  `drivers/media/platform/msm/camera_v2-legacy/sensor/eeprom/msm_eeprom.c`
+  line 1717 reads `qcom,eeprom-name`; line 1722 logs the exact failure and
+  switches the eeprom to userspace probe mode.
+- FACT:
+  `drivers/media/platform/msm/camera_v2-legacy/sensor/msm_sensor_driver.c`
+  requires the sensor's `qcom,eeprom-src` node to expose `qcom,eeprom-name`
+  when using kernel eeprom probe.
+- FACT:
+  vendor camera XML
+  `vendor/nubia/nx549j/proprietary/vendor/etc/camera/msm8953_camera_nubia549.xml`
+  declares `<EepromName>imx318</EepromName>` for `imx318` and
+  `<EepromName>imx258</EepromName>` for `imx258`.
+- FACT:
+  current NX549J DTS eeprom nodes `nx549j_eeprom0` and `nx549j_eeprom1` did
+  not define `qcom,eeprom-name` before attempt198.
+- Change:
+  `arch/arm64/boot/dts/qcom/nx549j/msm8953-camera-sensor-nx549j.dtsi` now adds
+  `qcom,eeprom-name = "imx318";` to `nx549j_eeprom0` and
+  `qcom,eeprom-name = "imx258";` to `nx549j_eeprom1`.
+- Why this file changed:
+  the fresh attempt197 kernel log maps directly to the missing DTS property,
+  and the vendor XML supplies the exact eeprom names that userspace passes into
+  the kernel sensor/eeprom contract.
+- Expected next marker:
+  attempt198 dmesg should no longer contain `msm_eeprom_platform_probe failed
+  1722`; camera diagnostics should advance from repeated
+  `CFG_SINIT_PROBE_WAIT_DONE` only to `CFG_SINIT_PROBE`, sensor driver probe,
+  or a more specific I2C/eeprom read failure.
+- Rollback condition:
+  revert the two `qcom,eeprom-name` properties if attempt198 regresses boot or
+  if a fresh log proves userspace expects different eeprom names for these two
+  sensor nodes.
+- Verification commands:
+  build `Image.gz-dtb`, repack boot with the same attempt197 ramdisk, flash via
+  `fastboot -s 30785d1a flash boot`, then capture `dmesg`, `logcat -b all`, and
+  `dumpsys media.camera`; grep for
+  `msm_eeprom_platform_probe failed 1722|CFG_SINIT_PROBE|probe request|match_id|sensor_probe`.
+
+2026-06-08T14:10Z attempt201 fingerprint Goodix service bring-up:
+
+- Patch category: PROPER-FIX / FINGERPRINT userspace ABI and Goodix IRQ init.
+- Touch status:
+  user cannot test touch now; do not use touch as the attempt201 pass/fail gate.
+- Built artifacts:
+  `/srv/forge/work/nx549j-preserve/release-attempt201-20260608-gxfp-irqfix/boot.img`
+  SHA-256 `fd82d4b123a10661ad01ca1fb8bb471862808ac9e77fe941c7b8c07782aff3f3`;
+  `fastboot-oem.img` / `vendor.img` SHA-256
+  `9f6375338eb98686ccf435fabc05b80d48b59a276285d8a3788679f0659c5651`;
+  `System.map` SHA-256
+  `16572c099cc66f4689ba3be036b01de07bd7af0c54185583d1ed000106e6548b`.
+- Flash transcript:
+  `fastboot flash boot` succeeded; `fastboot flash vendor` failed because this
+  bootloader has no `vendor` partition; `fastboot flash oem fastboot-oem.img`
+  succeeded. NX549J maps the resized `oem` partition as `/vendor`.
+- Runtime capture:
+  `/srv/forge/work/nx549j-preserve/captures/attempt201-boot-oem-gxfp-irqfix-20260608_0910`.
+- FACT:
+  attempt201 booted Android with `sys.boot_completed=1` and
+  `Linux localhost 4.9.227-perf+ #167 SMP PREEMPT Mon Jun 8 09:05:44 CDT 2026`.
+- FACT:
+  live `/vendor` contains the patched Goodix blobs:
+  `fingerprint.default.so` SHA-256
+  `a3a4d2bb5451bc4257c480fb618c8fa4dd263df124d99b1b561da9f796e70bfa`;
+  `gx_fpd` SHA-256
+  `11fbdccea3f230960d8e47ae7da0c80b5efb83185136072c71d4c10682aee256`;
+  `libfp_client.so` SHA-256
+  `77929588484b3df98a13853baf926590c1b10eec8c7eb64927cc7e88dc053cfc`.
+- Userspace fixes:
+  `fingerprint.default.so` no longer has stale `DT_NEEDED libandroid_runtime.so`;
+  `gx_fpd` no longer has stale `DT_NEEDED libunwind.so`; `libfp_client.so`
+  has targeted NOPs for the Android 11 Parcel stack-canary branches in
+  `BpFingerPrint::connect`, `BpFingerPrint::setActiveGroup`, and
+  `BpFingerPrint::setMode`.
+- Kernel fix:
+  `drivers/input/fingerprint/goodix_gf3208/platform.c` no longer drives the
+  IRQ GPIO as output during parse, and Goodix cleanup now frees the requested
+  IRQ before a later reopen. `gf_spi.c` tracks `irq_requested` so free_irq is
+  only called after successful `devm_request_threaded_irq`.
+- Runtime verification:
+  `init.svc.gx_fpd=running`, `init.svc.fps_hal=running`,
+  `service check goodix.fp` returns found, `lshal` lists
+  `android.hardware.biometrics.fingerprint@2.1::IBiometricsFingerprint/default`,
+  and `dumpsys fingerprint` reports `HAL deaths since last reboot: 0`.
+- Evidence that the kernel blocker moved:
+  attempt201 dmesg shows `goodix:driver_init_partial, exit`, `opened device,
+  irq = 104`, and Goodix ioctl handling for `GF_IOC_ENABLE_GPIO`,
+  `GF_IOC_DISABLE_IRQ`, `GF_IOC_RESET`, and `GF_IOC_ENABLE_IRQ`. The old
+  `gpio-48 ... tied to an IRQ as output`, `Flags mismatch irq 104`,
+  and `Failed to do GF_IOC_*` sequence is absent from the fresh capture.
+- Residual fingerprint note:
+  `dumpsys fingerprint` currently shows no enrolled prints. UI enrollment still
+  needs human testing once touch/input is available.
+- Next layers:
+  NFC is proven to be Broadcom BCM2079x and needs a boot/vendor/system patch
+  set; camera is blocked on missing stock blobs
+  `libmmcamera_eebinparse.so` and `libmmcamera_paaf_lib.so`; touch regression
+  remains deferred by the user and must be compared back to the known working
+  touch artifact before claiming input fixed.
+
+2026-06-08T15:20Z attempt203/attempt204 Broadcom NFC diagnostics:
+
+- Patch category:
+  NFC kernel diagnostics / ABI compatibility.
+- Full working userspace/vendor/system baseline:
+  `/srv/forge/work/nx549j-preserve/release-attempt202-20260608-nfc-gxfp`.
+  Old preserved `vendor.img`/`system.img` files were removed on user request;
+  only attempt202 `vendor.img` and `system.img` remain under preserved release
+  directories.
+- attempt203 boot artifact:
+  `/srv/forge/work/nx549j-preserve/release-attempt203-20260608-nfc-address/boot.img`
+  SHA-256 `f3e811f56178ae8a9675736ecbc91a34286c95e5e520b60da332fa567c413a14`.
+- attempt203 runtime:
+  Android booted with `sys.boot_completed=1`; kernel
+  `Linux localhost 4.9.227-perf+ #170 SMP PREEMPT Mon Jun 8 10:01:50 CDT 2026`.
+- attempt203 change:
+  `drivers/nfc/bcm2079x-i2c.c` now implements `BCMNFC_SET_CLIENT_ADDR` in
+  normal and compat ioctl paths, enables `change_client_addr()`, and retries
+  the first failed write through 10-bit address `0x1fa`.
+- attempt203 evidence:
+  fallback executed, but writes still failed with `-107`; logs showed NACK at
+  both 7-bit `0x77` and 10-bit `0x1fa`.
+- attempt204 boot artifact:
+  `/srv/forge/work/nx549j-preserve/release-attempt204-20260608-nfc-wake-high/boot.img`
+  SHA-256 `9caf509888d5f745358d8cf445b9ed20792bd3e3393e8fe60ddfdce264fe92c4`.
+- attempt204 runtime:
+  Android booted with `sys.boot_completed=1`; kernel
+  `Linux localhost 4.9.227-perf+ #171 SMP PREEMPT Mon Jun 8 10:16:28 CDT 2026`.
+- attempt204 diagnostic change:
+  `BCMNFC_POWER_CTL arg=1` forces `NFC_WAKE` high before setting EN high.
+- attempt204 evidence:
+  logs show the wake-high branch ran, but BLD_INFO write still NACKed at
+  `0x77`, then the 10-bit fallback `0x1fa` also NACKed. `dumpsys nfc` stays in
+  `mState=turning on`.
+- Current conclusion:
+  NFC driver probe, device node, ueventd ownership, HAL service, framework
+  service, config-file lookup, and ioctl/address compatibility are past the
+  previous blockers. The remaining blocker is below the userspace ABI: live
+  GPIO level/polarity, pinctrl state, reset/enable timing, or `ref_clk`.
+- Next kernel patch:
+  log EN/WAKE/IRQ values with `gpio_get_value()` after probe and after every
+  power/ioctl transition; log pinctrl selection failures; replace
+  `nfc_rf_clk != NULL` with `IS_ERR_OR_NULL(nfc_rf_clk)` and report
+  `PTR_ERR(nfc_rf_clk)` plus `clk_prepare_enable()` return code.
+- Touch note:
+  touch is still user-reported broken and must be compared back to the known
+  working touch artifact before claiming input fixed. Do not let NFC work hide
+  that regression.
+
+2026-06-08T19:55-05:00 attempt232/235 camera handoff:
+
+- Patch category: PROPER-FIX / CAMERA userspace-daemon ABI guard.
+- Kernel state: attempt232 fixed the kernel CSID reset return path; fresh logs
+  reached `msm_csid_cmd32 init rc=0` and `module_sensor_init: SUCCESS`.
+- Current first camera blocker moved to userspace:
+  attempt235 tombstones under
+  `/srv/forge/work/nx549j-preserve/captures/attempt235-camera-tombstones-20260608_live/tombstones`
+  show `/system/vendor/bin/mm-qcamera-daemon` crashing in
+  `/vendor/lib/libmmcamera2_mct.so`.
+- FACT: `tombstone_46` maps a `0x6000` `anon_inode:dmabuf` at
+  `f18d6000-f18dbfff`; MCT writes to `base + 0x6398`, which lands in the next
+  read-only `/system/lib/libxml2.so` mapping.
+- Source owner patched outside the kernel tree:
+  `device/nubia/nx549j/camera/QCamera2/stack/common/mm_camera_interface.h`,
+  `device/nubia/nx549j/camera/QCamera2/HAL/QCameraParameters.cpp`, and
+  `device/nubia/nx549j/camera/QCamera2/HAL3/QCamera3HWI.cpp` now allocate/map
+  the camera parm dmabuf with a `0x7000` minimum.
+- Expected next marker: next camera capture should no longer show the
+  `parm_base + 0x6398` MCT crash; if camera still fails, continue from the
+  first post-`QUERY_CAP` ACK blocker.
