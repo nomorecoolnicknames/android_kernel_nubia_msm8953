@@ -2686,6 +2686,7 @@ static int qpnp_wled_probe(struct platform_device *pdev)
 	struct device_node *revid_node;
 	int rc = 0, i;
 	const __be32 *prop;
+	u8 module_en;
 
 	wled = devm_kzalloc(&pdev->dev, sizeof(*wled), GFP_KERNEL);
 	if (!wled)
@@ -2757,6 +2758,17 @@ static int qpnp_wled_probe(struct platform_device *pdev)
 	if (rc) {
 		dev_err(&pdev->dev, "wled config failed\n");
 		return rc;
+	}
+
+	rc = qpnp_wled_read_reg(wled,
+			QPNP_WLED_MODULE_EN_REG(wled->ctrl_base), &module_en);
+	if (rc) {
+		dev_warn(&pdev->dev,
+			"unable to read initial WLED module state rc=%d\n", rc);
+	} else if (module_en & QPNP_WLED_MODULE_EN_MASK) {
+		wled->prev_state = true;
+		dev_info(&pdev->dev,
+			"initial WLED module state is enabled, syncing prev_state\n");
 	}
 
 	INIT_WORK(&wled->work, qpnp_wled_work);

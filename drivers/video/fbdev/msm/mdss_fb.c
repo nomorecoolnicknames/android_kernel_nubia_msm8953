@@ -346,6 +346,12 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	if (!bl_lvl && value)
 		bl_lvl = 1;
 
+	pr_info("NX549J: led brightness request fb%d value=%u mapped=%llu cur_bl=%u scaled=%u state=%d allow=%d secure=%d ext=%d\n",
+		mfd->index, (u32)value, bl_lvl, mfd->bl_level,
+		mfd->bl_level_scaled, mfd->panel_power_state,
+		mfd->allow_bl_update, mfd->allow_secure_bl_update,
+		mfd->ext_bl_ctrl);
+
 	if (!IS_CALIB_MODE_BL(mfd) && (!mfd->ext_bl_ctrl || !value ||
 							!mfd->bl_level)) {
 		mutex_lock(&mfd->bl_lock);
@@ -1809,11 +1815,22 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	bool bl_notify_needed = false;
 	bool twm_en = false;
 
+	pr_info("NX549J: set_backlight enter fb%d req=%u cur_bl=%u scaled=%u unset=%u state=%d allow=%d secure=%d cont_splash=%d panel_dead=%d dcm=%d\n",
+		mfd->index, bkl_lvl, mfd->bl_level, mfd->bl_level_scaled,
+		mfd->unset_bl_level, mfd->panel_power_state,
+		mfd->allow_bl_update, mfd->allow_secure_bl_update,
+		mfd->panel_info->cont_splash_enabled,
+		mfd->panel_info->panel_dead, mfd->dcm_state);
+
 	if ((((mdss_fb_is_power_off(mfd) && mfd->dcm_state != DCM_ENTER)
 		|| !mfd->allow_bl_update) && !IS_CALIB_MODE_BL(mfd) &&
 		!mfd->allow_secure_bl_update) ||
 		mfd->panel_info->cont_splash_enabled) {
 		mfd->unset_bl_level = bkl_lvl;
+		pr_info("NX549J: set_backlight deferred fb%d req=%u unset=%u state=%d allow=%d cont_splash=%d\n",
+			mfd->index, bkl_lvl, mfd->unset_bl_level,
+			mfd->panel_power_state, mfd->allow_bl_update,
+			mfd->panel_info->cont_splash_enabled);
 		return;
 	} else if (mdss_fb_is_power_on(mfd) && mfd->panel_info->panel_dead) {
 		mfd->unset_bl_level = mfd->bl_level;
@@ -1842,6 +1859,9 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 		 */
 		if (mfd->bl_level_scaled == temp) {
 			mfd->bl_level = bkl_lvl;
+			pr_info("NX549J: set_backlight unchanged fb%d req=%u scaled=%u bl=%u state=%d\n",
+				mfd->index, bkl_lvl, temp, mfd->bl_level,
+				mfd->panel_power_state);
 		} else {
 			if (mfd->bl_level != bkl_lvl)
 				bl_notify_needed = true;
@@ -1853,9 +1873,16 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 			if (twm_en) {
 				pr_info("TWM Enabled skip backlight update\n");
 			} else {
+				pr_info("NX549J: set_backlight panel call fb%d req=%u scaled=%u old_bl=%u old_scaled=%u state=%d\n",
+					mfd->index, bkl_lvl, temp, mfd->bl_level,
+					mfd->bl_level_scaled,
+					mfd->panel_power_state);
 				pdata->set_backlight(pdata, temp);
 				mfd->bl_level = bkl_lvl;
 				mfd->bl_level_scaled = temp;
+				pr_info("NX549J: set_backlight done fb%d req=%u scaled=%u bl=%u state=%d\n",
+					mfd->index, bkl_lvl, temp, mfd->bl_level,
+					mfd->panel_power_state);
 			}
 		}
 		if (ad_bl_notify_needed)
@@ -1864,6 +1891,9 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 		if (bl_notify_needed)
 			mdss_fb_bl_update_notify(mfd,
 				NOTIFY_TYPE_BL_UPDATE);
+	} else {
+		pr_info("NX549J: set_backlight missing panel callback fb%d pdata=%pK req=%u state=%d\n",
+			mfd->index, pdata, bkl_lvl, mfd->panel_power_state);
 	}
 }
 
@@ -1987,9 +2017,16 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 
 	pr_debug("Transitioning from %d --> %d\n", cur_power_state,
 		req_power_state);
+	pr_info("NX549J: blank_blank enter fb%d cur=%d req=%d bl=%u scaled=%u unset=%u allow=%d op=%d\n",
+		mfd->index, cur_power_state, req_power_state, mfd->bl_level,
+		mfd->bl_level_scaled, mfd->unset_bl_level,
+		mfd->allow_bl_update, mfd->op_enable);
 
 	if (cur_power_state == req_power_state) {
 		pr_debug("No change in power state\n");
+		pr_info("NX549J: blank_blank no-change fb%d state=%d bl=%u scaled=%u\n",
+			mfd->index, cur_power_state, mfd->bl_level,
+			mfd->bl_level_scaled);
 		return 0;
 	}
 
@@ -2014,6 +2051,10 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 		mfd->allow_bl_update = false;
 		if (current_bl)
 			mfd->unset_bl_level = current_bl;
+		pr_info("NX549J: blank_blank forced zero fb%d prev_bl=%d now_bl=%u scaled=%u unset=%u allow=%d\n",
+			mfd->index, current_bl, mfd->bl_level,
+			mfd->bl_level_scaled, mfd->unset_bl_level,
+			mfd->allow_bl_update);
 		mutex_unlock(&mfd->bl_lock);
 	}
 	mfd->panel_power_state = req_power_state;
@@ -2028,6 +2069,11 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 	}
 	mfd->op_enable = true;
 	complete(&mfd->power_off_comp);
+
+	pr_info("NX549J: blank_blank exit fb%d ret=%d state=%d bl=%u scaled=%u unset=%u allow=%d op=%d\n",
+		mfd->index, ret, mfd->panel_power_state, mfd->bl_level,
+		mfd->bl_level_scaled, mfd->unset_bl_level,
+		mfd->allow_bl_update, mfd->op_enable);
 
 	return ret;
 }
