@@ -1584,10 +1584,27 @@ int msm_camera_power_up(struct msm_camera_power_ctrl_t *ctrl,
 				ctrl->gpio_conf->gpio_num_info->gpio_num
 				[power_setting->seq_val],
 				(int) power_setting->config_val);
+			/*
+			 * NX549J camera bring-up diagnostic: log every sensor
+			 * GPIO drive (esp. VANA=seq 2) with the GPIO number, the
+			 * requested value, and the read-back level so we can tell
+			 * whether analog power (VANA) is actually asserted during
+			 * the power-up that precedes streaming.
+			 */
+			pr_err("NX549J camera pwrdiag: gpio seq=%d gpio_num=%d set=%d readback=%d\n",
+				power_setting->seq_val,
+				ctrl->gpio_conf->gpio_num_info->gpio_num
+				[power_setting->seq_val],
+				(int) power_setting->config_val,
+				gpio_get_value(ctrl->gpio_conf->gpio_num_info->
+				gpio_num[power_setting->seq_val]));
 			break;
 		case SENSOR_VREG:
 			if (power_setting->seq_val == INVALID_VREG)
 				break;
+			pr_err("NX549J camera pwrdiag: vreg seq=%d num_vreg=%d config=%d\n",
+				power_setting->seq_val, ctrl->num_vreg,
+				(int) power_setting->config_val);
 
 			if (power_setting->seq_val >= CAM_VREG_MAX) {
 				pr_err("%s vreg index %d >= max %d\n", __func__,
