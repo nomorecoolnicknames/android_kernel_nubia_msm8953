@@ -28,6 +28,23 @@
 #include "include/msm_csiphy_3_5_hwreg.h"
 #include "cam_hw_ops.h"
 
+/*
+ * NX549J camera bring-up (ISOLATION): the IMX318 rear preview freezes after ~1
+ * frame because the CSID receives zero MIPI packets (total_pkts=0, no CRC/ECC
+ * errors) although the sensor is commanded to stream and CSIPHY is configured
+ * with settle_cnt=0xe. settle_cnt=0xe at the 266.67 MHz phytimer is ~52 ns of
+ * Tclk-settle, below the MIPI D-PHY minimum (~95 ns), and the sensor lib
+ * returns csiphy_clk=0 so the settle is never scaled to the real bit-clock.
+ * This runtime-tunable override lets us sweep settle_cnt without a rebuild:
+ *   adb shell 'echo 0x20 > /sys/module/msm_csiphy/parameters/nx549j_settle_override'
+ * Set back to 0 to restore the sensor-provided value. Rollback: delete this
+ * param + its use site below.
+ */
+static int nx549j_settle_override;
+module_param(nx549j_settle_override, int, 0644);
+MODULE_PARM_DESC(nx549j_settle_override,
+	"NX549J: if >0, force CSIPHY settle_cnt to this value (DPHY Tclk-settle tuning)");
+
 #define DBG_CSIPHY 0
 #define SOF_DEBUG_ENABLE 1
 #define SOF_DEBUG_DISABLE 0
@@ -506,6 +523,18 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 	CDBG("%s csiphy_params, settle cnt = 0x%x csid %d\n",
 		__func__, csiphy_params->settle_cnt,
 		csiphy_params->csid_core);
+
+	/*
+	 * NX549J ISOLATION: force the D-PHY settle count when the override module
+	 * param is set, so we can sweep settle values at runtime to find one that
+	 * makes the PHY lock (CSID total_pkts > 0). 0 = use sensor-provided value.
+	 */
+	if (nx549j_settle_override > 0) {
+		pr_err("NX549J camera csiphydiag: settle override %u -> %u\n",
+			csiphy_params->settle_cnt,
+			(uint8_t)nx549j_settle_override);
+		csiphy_params->settle_cnt = (uint8_t)nx549j_settle_override;
+	}
 
 	/*
 	 * NX549J camera bring-up diagnostic (DIAGNOSTIC, no behaviour change):
