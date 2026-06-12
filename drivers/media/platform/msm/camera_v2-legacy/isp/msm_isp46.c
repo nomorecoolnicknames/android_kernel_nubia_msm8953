@@ -260,6 +260,16 @@ static void msm_vfe46_process_input_irq(struct vfe_device *vfe_dev,
 	}
 
 	if (irq_status0 & (1 << 0)) {
+		/*
+		 * NX549J camera bring-up diagnostic: count VFE PIX0 SOF IRQs.
+		 * If these fire, the sensor IS transmitting and the CSIPHY/CSID
+		 * receive path is delivering frames -> the frozen-preview bug is
+		 * downstream (buffer/reg_update). If they NEVER fire, no MIPI
+		 * frames reach the VFE -> sensor/CSIPHY/receive-config (incl. a
+		 * 3.18-vs-4.9 camera UAPI mismatch on the CSI/stream config).
+		 */
+		pr_err_ratelimited("NX549J camera vfediag: PIX0 SOF irq vfe=%d status0=0x%x\n",
+			vfe_dev->pdev->id, irq_status0);
 		ISP_DBG("%s: SOF IRQ\n", __func__);
 		msm_isp_increment_frame_id(vfe_dev, VFE_PIX_0, ts);
 	}
