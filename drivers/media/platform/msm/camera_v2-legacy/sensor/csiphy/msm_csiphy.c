@@ -507,6 +507,23 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 		__func__, csiphy_params->settle_cnt,
 		csiphy_params->csid_core);
 
+	/*
+	 * NX549J camera bring-up diagnostic (DIAGNOSTIC, no behaviour change):
+	 * preview freezes after ~1 frame on this port. A wrong CSIPHY settle
+	 * count vs the actual MIPI data rate makes the PHY fail to lock, so the
+	 * sensor's frames never reach the VFE. Dump the negotiated CSIPHY
+	 * parameters so the next capture shows whether settle_cnt is sane for
+	 * the sensor mode the (blob) resolution picker selected.
+	 */
+	pr_err("NX549J camera csiphydiag: lane_config id=%u lane_mask=0x%x lane_cnt=%u settle_cnt=0x%x clk_rate=%ld max_clk=%u csiphy_clk=%u ratio=%d csid_core=%u 3phase=%u combo=%u hw_ver=0x%x\n",
+		csiphy_id, lane_mask, lane_cnt,
+		csiphy_params->settle_cnt, clk_rate,
+		(unsigned int)csiphy_dev->csiphy_max_clk,
+		csiphy_params->csiphy_clk,
+		ratio, csiphy_params->csid_core,
+		csiphy_params->csi_3phase, csiphy_params->combo_mode,
+		csiphy_dev->hw_version);
+
 	if (csiphy_dev->hw_version >= CSIPHY_VERSION_V30) {
 		val = msm_camera_io_r(csiphy_dev->clk_mux_base);
 		if (csiphy_params->combo_mode &&
