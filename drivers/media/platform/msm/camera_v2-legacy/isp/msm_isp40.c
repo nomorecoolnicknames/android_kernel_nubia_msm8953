@@ -386,6 +386,17 @@ static void msm_vfe40_process_input_irq(struct vfe_device *vfe_dev,
 		return;
 
 	if (irq_status0 & (1 << 0)) {
+		/*
+		 * NX549J camera bring-up diagnostic (VFE40 is the real msm8953
+		 * VFE — the earlier isp46 marker was dead code): prove whether
+		 * PIX SOF keeps firing after the first frame. Preview freezes
+		 * at buf_done seq=1 while the daemon keeps sending per-frame
+		 * AEC i2c writes, suggesting SOFs continue but WM-done stops.
+		 */
+		pr_err_ratelimited("NX549J camera vfe40diag: SOF vfe=%d frame_id=%u status0=0x%x\n",
+			vfe_dev->pdev->id,
+			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id,
+			irq_status0);
 		ISP_DBG("%s: SOF IRQ\n", __func__);
 		msm_isp_increment_frame_id(vfe_dev, VFE_PIX_0, ts);
 	}
@@ -624,6 +635,10 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 		return;
 	/* Shift status bits so that PIX REG UPDATE is 1st bit */
 	shift_irq = ((irq_status0 & 0xF0) >> 4);
+	/* NX549J camera bring-up diagnostic: reg_update ACK per frame_src. */
+	pr_err_ratelimited("NX549J camera vfe40diag: reg_update_ack vfe=%d shift_irq=0x%x frame_id=%u\n",
+		vfe_dev->pdev->id, shift_irq,
+		vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
 
 	for (i = VFE_PIX_0; i <= VFE_RAW_2; i++) {
 		if (shift_irq & BIT(i)) {
@@ -729,6 +744,17 @@ static void msm_vfe40_reg_update(struct vfe_device *vfe_dev,
 		(frame_src >= VFE_RAW_0 && frame_src <= VFE_SRC_MAX)) {
 		msm_camera_io_w_mb(update_mask,
 			vfe_dev->vfe_base + 0x378);
+	} else {
+		/*
+		 * NX549J camera bring-up diagnostic: reg_update REQUESTED but
+		 * NOT written to 0x378 (split-VFE branch filtered it). If this
+		 * fires for PIX_0 on the streaming VFE, frames 2+ never latch
+		 * and the WM stalls after the first frame — the exact frozen
+		 * preview signature.
+		 */
+		pr_err_ratelimited("NX549J camera vfe40diag: reg_update SKIPPED write vfe=%d src=%d mask=0x%x is_split=%d camif=%d\n",
+			vfe_dev->pdev->id, frame_src, update_mask,
+			vfe_dev->is_split, vfe_dev->axi_data.camif_state);
 	}
 	spin_unlock_irqrestore(&vfe_dev->reg_update_lock, flags);
 }

@@ -61,6 +61,186 @@ static inline struct msm_vfe_axi_stream *msm_isp_get_controllable_stream(
 	return stream_info;
 }
 
+static void nx549j_isp_diag_stream(const char *tag,
+	struct vfe_device *vfe_dev, struct msm_vfe_axi_stream *stream_info)
+{
+	int intf = -1;
+	struct msm_vfe_src_info *src_info = NULL;
+
+	if (!vfe_dev || !stream_info)
+		return;
+
+	if (SRC_TO_INTF(stream_info->stream_src) < VFE_SRC_MAX) {
+		intf = SRC_TO_INTF(stream_info->stream_src);
+		src_info = &vfe_dev->axi_data.src_info[intf];
+	}
+
+	pr_err("NX549J camera ispdiag: %s vfe=%d split=%u handle=0x%x idx=%u session=%u stream=%u src=%d intf=%d state=%d planes=%u type=%d fmt=0x%x runtime_fmt=0x%x wm0=%u wm1=%u bufq0=0x%x bufq1=0x%x comp=%u controllable=%u active=%d flag=%d pix_cnt=%u raw_cnt=%u frame=%u eof=%u\n",
+		tag, vfe_dev->pdev->id, vfe_dev->is_split,
+		stream_info->stream_handle,
+		HANDLE_TO_IDX(stream_info->stream_handle),
+		stream_info->session_id, stream_info->stream_id,
+		stream_info->stream_src, intf, stream_info->state,
+		stream_info->num_planes, stream_info->stream_type,
+		stream_info->output_format, stream_info->runtime_output_format,
+		stream_info->wm[0], stream_info->wm[1],
+		stream_info->bufq_handle[0], stream_info->bufq_handle[1],
+		stream_info->comp_mask_index, stream_info->controllable_output,
+		src_info ? src_info->active : -1,
+		src_info ? src_info->flag : -1,
+		src_info ? src_info->pix_stream_count : 0,
+		src_info ? src_info->raw_stream_count : 0,
+		src_info ? src_info->frame_id : 0,
+		src_info ? src_info->eof_id : 0);
+}
+
+static bool nx549j_isp_diag_is_burst_stream(
+	struct msm_vfe_axi_stream *stream_info)
+{
+	if (!stream_info)
+		return false;
+
+	return stream_info->stream_type == BURST_STREAM ||
+		stream_info->num_burst_capture ||
+		stream_info->runtime_num_burst_capture;
+}
+
+static bool nx549j_isp_format_can_share_single_fd(uint32_t output_format)
+{
+	switch (output_format) {
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_NV21:
+	case V4L2_PIX_FMT_NV14:
+	case V4L2_PIX_FMT_NV41:
+	case V4L2_PIX_FMT_NV16:
+	case V4L2_PIX_FMT_NV61:
+	case V4L2_PIX_FMT_NV24:
+	case V4L2_PIX_FMT_NV42:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool nx549j_isp_promote_single_fd_planes(
+	struct msm_isp_buffer *buf, struct msm_vfe_axi_stream *stream_info,
+	const char *caller)
+{
+	uint8_t i;
+
+	if (!buf || !stream_info)
+		return false;
+
+	if (buf->num_planes == stream_info->num_planes)
+		return true;
+
+	pr_err_ratelimited("NX549J camera ispdiag: plane_mismatch caller=%s handle=0x%x session=%u stream=%u type=%d fmt=0x%x runtime_fmt=0x%x stream_planes=%u buf_planes=%d buf_idx=%d p0_fd=%d p0_paddr=%pa p0_len=%zu off0=0x%x off1=0x%x stride0=%u stride1=%u scan0=%u scan1=%u\n",
+		caller, stream_info->stream_handle, stream_info->session_id,
+		stream_info->stream_id, stream_info->stream_type,
+		stream_info->output_format, stream_info->runtime_output_format,
+		stream_info->num_planes, buf->num_planes, buf->buf_idx,
+		buf->mapped_info[0].buf_fd, &buf->mapped_info[0].paddr,
+		buf->mapped_info[0].len,
+		stream_info->plane_cfg[0].plane_addr_offset,
+		stream_info->num_planes > 1 ?
+			stream_info->plane_cfg[1].plane_addr_offset : 0,
+		stream_info->plane_cfg[0].output_stride,
+		stream_info->num_planes > 1 ?
+			stream_info->plane_cfg[1].output_stride : 0,
+		stream_info->plane_cfg[0].output_scan_lines,
+		stream_info->num_planes > 1 ?
+			stream_info->plane_cfg[1].output_scan_lines : 0);
+
+	if (buf->num_planes == 0)
+		pr_err_ratelimited("NX549J camera ispdiag: zero_plane_buffer caller=%s handle=0x%x session=%u stream=%u buf_idx=%d state=%d fmt=0x%x\n",
+			caller, stream_info->stream_handle,
+			stream_info->session_id, stream_info->stream_id,
+			buf->buf_idx, buf->state, stream_info->output_format);
+
+	if (buf->num_planes != 1 ||
+		stream_info->num_planes <= 1 ||
+		stream_info->num_planes > MAX_PLANES_PER_STREAM ||
+		!nx549j_isp_format_can_share_single_fd(
+			stream_info->output_format))
+		return false;
+
+	for (i = 1; i < stream_info->num_planes; i++)
+		buf->mapped_info[i] = buf->mapped_info[0];
+	buf->num_planes = stream_info->num_planes;
+
+	pr_err("NX549J camera ispdiag: single_fd_plane_compat applied caller=%s handle=0x%x stream=%u fmt=0x%x planes=%u buf_idx=%d\n",
+		caller, stream_info->stream_handle, stream_info->stream_id,
+		stream_info->output_format, stream_info->num_planes,
+		buf->buf_idx);
+
+	return true;
+}
+
+static const char *nx549j_isp_update_type_name(
+	enum msm_vfe_axi_stream_update_type update_type)
+{
+	switch (update_type) {
+	case ENABLE_STREAM_BUF_DIVERT:
+		return "ENABLE_STREAM_BUF_DIVERT";
+	case DISABLE_STREAM_BUF_DIVERT:
+		return "DISABLE_STREAM_BUF_DIVERT";
+	case UPDATE_STREAM_FRAMEDROP_PATTERN:
+		return "UPDATE_STREAM_FRAMEDROP_PATTERN";
+	case UPDATE_STREAM_STATS_FRAMEDROP_PATTERN:
+		return "UPDATE_STREAM_STATS_FRAMEDROP_PATTERN";
+	case UPDATE_STREAM_AXI_CONFIG:
+		return "UPDATE_STREAM_AXI_CONFIG";
+	case UPDATE_STREAM_REQUEST_FRAMES:
+		return "UPDATE_STREAM_REQUEST_FRAMES";
+	case UPDATE_STREAM_ADD_BUFQ:
+		return "UPDATE_STREAM_ADD_BUFQ";
+	case UPDATE_STREAM_REMOVE_BUFQ:
+		return "UPDATE_STREAM_REMOVE_BUFQ";
+	case UPDATE_STREAM_SW_FRAME_DROP:
+		return "UPDATE_STREAM_SW_FRAME_DROP";
+	case UPDATE_STREAM_REQUEST_FRAMES_VER2:
+		return "UPDATE_STREAM_REQUEST_FRAMES_VER2";
+	case UPDATE_STREAM_OFFLINE_AXI_CONFIG:
+		return "UPDATE_STREAM_OFFLINE_AXI_CONFIG";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static void nx549j_isp_diag_request(const char *tag,
+	struct vfe_device *vfe_dev,
+	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
+{
+	int i;
+
+	if (!vfe_dev || !stream_cfg_cmd)
+		return;
+
+	pr_err("NX549J camera ispdiag: %s vfe=%d session=%u stream=%u src=%d fmt=0x%x vt=%u burst=%u hfr=%u frame_base=%u init_drop=%u skip=%d divert=%u axi=0x%x controllable=%u burst_len=%u rdi=%d\n",
+		tag, vfe_dev->pdev->id, stream_cfg_cmd->session_id,
+		stream_cfg_cmd->stream_id, stream_cfg_cmd->stream_src,
+		stream_cfg_cmd->output_format, stream_cfg_cmd->vt_enable,
+		stream_cfg_cmd->burst_count, stream_cfg_cmd->hfr_mode,
+		stream_cfg_cmd->frame_base, stream_cfg_cmd->init_frame_drop,
+		stream_cfg_cmd->frame_skip_pattern, stream_cfg_cmd->buf_divert,
+		stream_cfg_cmd->axi_stream_handle,
+		stream_cfg_cmd->controllable_output,
+		stream_cfg_cmd->burst_len, stream_cfg_cmd->rdi_input_type);
+
+	for (i = 0; i < MAX_PLANES_PER_STREAM; i++)
+		pr_err("NX549J camera ispdiag: %s plane[%d] vfe=%d stream=%u w=%u h=%u stride=%u scan=%u fmt=%u off=%u csid=%u cid=%u\n",
+			tag, i, vfe_dev->pdev->id,
+			stream_cfg_cmd->stream_id,
+			stream_cfg_cmd->plane_cfg[i].output_width,
+			stream_cfg_cmd->plane_cfg[i].output_height,
+			stream_cfg_cmd->plane_cfg[i].output_stride,
+			stream_cfg_cmd->plane_cfg[i].output_scan_lines,
+			stream_cfg_cmd->plane_cfg[i].output_plane_format,
+			stream_cfg_cmd->plane_cfg[i].plane_addr_offset,
+			stream_cfg_cmd->plane_cfg[i].csid_src,
+			stream_cfg_cmd->plane_cfg[i].rdi_cid);
+}
+
 int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
@@ -461,13 +641,24 @@ int msm_isp_axi_check_stream_state(
 	if (stream_cfg_cmd->num_streams > MAX_NUM_STREAM)
 		return -EINVAL;
 
+	pr_err("NX549J camera ispdiag: check_state vfe=%d cmd=%d num=%u valid=%d active_streams=%u camif_state=%d\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->cmd,
+		stream_cfg_cmd->num_streams, valid_state,
+		axi_data->num_active_stream, axi_data->camif_state);
+
 	for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
 		if (HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i]) >=
 			VFE_AXI_SRC_MAX) {
+			pr_err("NX549J camera ispdiag: check_state invalid handle=0x%x idx=%u max=%u\n",
+				stream_cfg_cmd->stream_handle[i],
+				HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i]),
+				VFE_AXI_SRC_MAX);
 			return -EINVAL;
 		}
 		stream_info = &axi_data->stream_info[
 			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
+		nx549j_isp_diag_stream("check_state stream", vfe_dev,
+			stream_info);
 		if (stream_info->state == AVAILABLE)
 			continue;
 		spin_lock_irqsave(&stream_info->lock, flags);
@@ -483,6 +674,8 @@ int msm_isp_axi_check_stream_state(
 			} else {
 				pr_err("%s: Invalid stream state: %d\n",
 					__func__, stream_info->state);
+				nx549j_isp_diag_stream("check_state invalid",
+					vfe_dev, stream_info);
 				spin_unlock_irqrestore(
 					&stream_info->lock, flags);
 				if (stream_cfg_cmd->cmd == START_STREAM)
@@ -1280,10 +1473,15 @@ int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd = arg;
 	struct msm_vfe_axi_stream *stream_info;
 
+	nx549j_isp_diag_request("request_axi enter", vfe_dev,
+		stream_cfg_cmd);
+
 	rc = msm_isp_axi_create_stream(vfe_dev,
 		&vfe_dev->axi_data, stream_cfg_cmd);
 	if (rc) {
 		pr_err("%s: create stream failed\n", __func__);
+		nx549j_isp_diag_request("request_axi create_failed",
+			vfe_dev, stream_cfg_cmd);
 		return rc;
 	}
 
@@ -1291,6 +1489,8 @@ int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		&vfe_dev->axi_data, stream_cfg_cmd);
 	if (rc) {
 		pr_err("%s: Request validation failed\n", __func__);
+		nx549j_isp_diag_request("request_axi validate_failed",
+			vfe_dev, stream_cfg_cmd);
 		if (HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle) <
 			VFE_AXI_SRC_MAX)
 			msm_isp_axi_destroy_stream(&vfe_dev->axi_data,
@@ -1302,6 +1502,8 @@ int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	if (!stream_info) {
 		pr_err("%s: can not find stream handle %x\n", __func__,
 			stream_cfg_cmd->axi_stream_handle);
+		nx549j_isp_diag_request("request_axi no_stream_info",
+			vfe_dev, stream_cfg_cmd);
 		return -EINVAL;
 	}
 
@@ -1357,6 +1559,10 @@ done:
 		msm_isp_axi_destroy_stream(&vfe_dev->axi_data,
 			HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle));
 	}
+	nx549j_isp_diag_request("request_axi done", vfe_dev,
+		stream_cfg_cmd);
+	nx549j_isp_diag_stream("request_axi stream", vfe_dev,
+		stream_info);
 	return rc;
 }
 
@@ -1420,8 +1626,11 @@ static int  msm_isp_axi_stream_enable_cfg(
 		goto error;
 	}
 
-	if (stream_info->state == INACTIVE)
+	if (stream_info->state == INACTIVE) {
+		nx549j_isp_diag_stream("enable_cfg inactive skip",
+			vfe_dev, stream_info);
 		goto error;
+	}
 
 	if (stream_info->state == START_PENDING ||
 		stream_info->state == RESUME_PENDING) {
@@ -1429,6 +1638,11 @@ static int  msm_isp_axi_stream_enable_cfg(
 	} else {
 		enable_wm = 0;
 	}
+	nx549j_isp_diag_stream("enable_cfg enter", vfe_dev, stream_info);
+	pr_err("NX549J camera ispdiag: enable_cfg vfe=%d handle=0x%x enable_wm=%d dual_sync=%d planes=%u active_streams=%u\n",
+		vfe_dev->pdev->id, stream_info->stream_handle, enable_wm,
+		dual_vfe_sync, stream_info->num_planes,
+		axi_data->num_active_stream);
 	for (i = 0; i < stream_info->num_planes; i++) {
 		/*
 		 * In case when sensor is streaming, use dual vfe sync mode
@@ -1486,6 +1700,9 @@ static int  msm_isp_axi_stream_enable_cfg(
 		axi_data->num_active_stream++;
 	else if (stream_info->state == STOP_PENDING)
 		axi_data->num_active_stream--;
+	pr_err("NX549J camera ispdiag: enable_cfg done vfe=%d handle=0x%x state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_info->stream_handle,
+		stream_info->state, axi_data->num_active_stream);
 	return 0;
 error:
 	return -EINVAL;
@@ -1803,8 +2020,16 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 		queue_req = list_first_entry_or_null(
 			&temp_stream_info->request_q,
 			struct msm_vfe_frame_request_queue, list);
-		if (!queue_req)
+		if (!queue_req) {
+			if (nx549j_isp_diag_is_burst_stream(temp_stream_info))
+				pr_err("NX549J camera ispdiag: get_stream_buffer no_request vfe=%d handle=0x%x q_cnt=%u undelivered=%u sw_pp=%u\n",
+					vfe_dev->pdev->id,
+					temp_stream_info->stream_handle,
+					temp_stream_info->request_q_cnt,
+					temp_stream_info->undelivered_request_cnt,
+					temp_stream_info->sw_ping_pong_bit);
 			return buf;
+		}
 
 		bufq_handle = temp_stream_info->
 			bufq_handle[queue_req->buff_queue_id];
@@ -1813,6 +2038,13 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 			temp_stream_info->request_q_cnt <= 0) {
 			pr_err_ratelimited("%s: Drop request. Shared stream is stopped.\n",
 			__func__);
+			if (nx549j_isp_diag_is_burst_stream(temp_stream_info))
+				pr_err("NX549J camera ispdiag: get_stream_buffer bad_queue vfe=%d handle=0x%x qid=%u bufq=0x%x q_cnt=%u idx=%u\n",
+					vfe_dev->pdev->id,
+					temp_stream_info->stream_handle,
+					queue_req->buff_queue_id, bufq_handle,
+					temp_stream_info->request_q_cnt,
+					queue_req->buf_index);
 			return buf;
 		}
 		buf_index = queue_req->buf_index;
@@ -1822,6 +2054,14 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 	}
 	rc = vfe_dev->buf_mgr->ops->get_buf(vfe_dev->buf_mgr,
 		vfe_dev->pdev->id, bufq_handle, buf_index, &buf);
+	if (nx549j_isp_diag_is_burst_stream(stream_info) ||
+		nx549j_isp_diag_is_burst_stream(temp_stream_info))
+		pr_err("NX549J camera ispdiag: get_stream_buffer vfe=%d handle=0x%x stream=%u controllable=%u bufq=0x%x requested_idx=%u rc=%d buf=%pK buf_idx=%d buf_planes=%u\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			stream_info->stream_id, stream_info->controllable_output,
+			bufq_handle, buf_index, rc, buf,
+			buf ? (int)buf->buf_idx : -1,
+			buf ? buf->num_planes : 0);
 
 	if (rc == -EFAULT) {
 		msm_isp_halt_send_error(vfe_dev,
@@ -1831,8 +2071,14 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 	if (rc < 0)
 		return buf;
 
-	if (buf->num_planes != stream_info->num_planes) {
-		pr_err("%s: Invalid buffer\n", __func__);
+	if (!nx549j_isp_promote_single_fd_planes(buf, stream_info,
+		__func__)) {
+		pr_err_ratelimited("NX549J camera ispdiag: plane_mismatch drop caller=%s handle=0x%x stream=%u fmt=0x%x stream_planes=%u buf_planes=%d buf_idx=%d\n",
+			__func__, stream_info->stream_handle,
+			stream_info->stream_id, stream_info->output_format,
+			stream_info->num_planes, buf ? buf->num_planes : -1,
+			buf ? buf->buf_idx : -1);
+		pr_err_ratelimited("%s: Invalid buffer\n", __func__);
 		vfe_dev->buf_mgr->ops->put_buf(vfe_dev->buf_mgr,
 				bufq_handle, buf->buf_idx);
 		buf = NULL;
@@ -1870,8 +2116,15 @@ int msm_isp_cfg_offline_ping_pong_address(struct vfe_device *vfe_dev,
 			return -EINVAL;
 		}
 
-		if (buf->num_planes != stream_info->num_planes) {
-			pr_err("%s: Invalid buffer\n", __func__);
+		if (!nx549j_isp_promote_single_fd_planes(buf, stream_info,
+			__func__)) {
+			pr_err_ratelimited("NX549J camera ispdiag: plane_mismatch drop caller=%s handle=0x%x stream=%u fmt=0x%x stream_planes=%u buf_planes=%d buf_idx=%d\n",
+				__func__, stream_info->stream_handle,
+				stream_info->stream_id, stream_info->output_format,
+				stream_info->num_planes,
+				buf ? buf->num_planes : -1,
+				buf ? buf->buf_idx : -1);
+			pr_err_ratelimited("%s: Invalid buffer\n", __func__);
 			vfe_dev->buf_mgr->ops->put_buf(vfe_dev->buf_mgr,
 				bufq_handle, buf->buf_idx);
 			return -EINVAL;
@@ -1969,6 +2222,15 @@ static int msm_isp_cfg_ping_pong_address(struct vfe_device *vfe_dev,
 	/* Isolate pingpong_bit from pingpong_status */
 	pingpong_bit = ((pingpong_status >>
 		stream_info->wm[0]) & 0x1);
+	if (nx549j_isp_diag_is_burst_stream(stream_info)) {
+		nx549j_isp_diag_stream("cfg_pingpong", vfe_dev,
+			stream_info);
+		pr_err("NX549J camera ispdiag: cfg_pingpong detail vfe=%d handle=0x%x scratch=%d pp_status=0x%x pp_bit=%u write_bit=%u buf=%pK buf_idx=%d planes=%u\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			scratch, pingpong_status, pingpong_bit,
+			!pingpong_bit, buf, buf ? (int)buf->buf_idx : -1,
+			stream_info->num_planes);
+	}
 
 	for (i = 0; i < stream_info->num_planes; i++) {
 		if (buf) {
@@ -2132,6 +2394,13 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 		pr_err_ratelimited("%s: Error getting buf_src\n", __func__);
 		return -EINVAL;
 	}
+	if (nx549j_isp_diag_is_burst_stream(stream_info))
+		pr_err("NX549J camera ispdiag: process_done enter vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x buf_src=%u drop=%u divert=%u fmt=0x%x\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			stream_info->stream_id, frame_id, buf->buf_idx,
+			buf->bufq_handle, buf_src, drop_frame,
+			stream_info->buf_divert,
+			stream_info->runtime_output_format);
 
 	if (drop_frame) {
 		buf->buf_debug.put_state[
@@ -2150,6 +2419,12 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 			return rc;
 		}
 		if (!rc) {
+			if (nx549j_isp_diag_is_burst_stream(stream_info))
+				pr_err("NX549J camera ispdiag: process_done dropped vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u rc=0\n",
+					vfe_dev->pdev->id,
+					stream_info->stream_handle,
+					stream_info->stream_id, frame_id,
+					buf->buf_idx);
 			ISP_DBG("%s:%d vfe_id %d Buffer dropped %d\n",
 				__func__, __LINE__, vfe_dev->pdev->id,
 				frame_id);
@@ -2196,12 +2471,22 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 		else
 			msm_isp_send_event(vfe_dev,
 			ISP_EVENT_BUF_DIVERT, &buf_event);
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: process_done sent_divert vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x buf_type=%d\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, frame_id, buf->buf_idx,
+				buf->bufq_handle, bufq ? bufq->buf_type : -1);
 	} else {
 		ISP_DBG("%s: vfe_id %d send buf done buf-id %d bufq %x\n",
 			__func__, vfe_dev->pdev->id, buf->buf_idx,
 			buf->bufq_handle);
 		msm_isp_send_event(vfe_dev, ISP_EVENT_BUF_DONE,
 			&buf_event);
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: process_done sent_buf_done vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, frame_id, buf->buf_idx,
+				buf->bufq_handle);
 		buf->buf_debug.put_state[
 			buf->buf_debug.put_state_last] =
 			MSM_ISP_BUFFER_STATE_PUT_BUF;
@@ -2214,6 +2499,11 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 					ISP_EVENT_BUF_FATAL_ERROR);
 			return rc;
 		}
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: process_done buf_done_returned vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u rc=%d\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, frame_id, buf->buf_idx,
+				rc);
 	}
 
 	return 0;
@@ -2437,10 +2727,25 @@ static int msm_isp_axi_wait_for_cfg_done(struct vfe_device *vfe_dev,
 	int rc;
 	unsigned long flags;
 	enum msm_vfe_input_src i = 0;
+
+	pr_err("NX549J camera ispdiag: wait_cfg enter vfe=%d camif_update=%d src_mask=0x%x reg_cnt=%d camif_state=%d pipeline=%d\n",
+		vfe_dev->pdev->id, camif_update, src_mask, regUpdateCnt,
+		vfe_dev->axi_data.camif_state,
+		vfe_dev->axi_data.pipeline_update);
+
 	spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
 
 	for (i = 0; i < VFE_SRC_MAX; i++) {
 		if (src_mask & (1 << i)) {
+			pr_err("NX549J camera ispdiag: wait_cfg src vfe=%d intf=%d pre_update=%u active=%u flag=%u pix_cnt=%u raw_cnt=%u frame=%u eof=%u\n",
+				vfe_dev->pdev->id, i,
+				vfe_dev->axi_data.stream_update[i],
+				vfe_dev->axi_data.src_info[i].active,
+				vfe_dev->axi_data.src_info[i].flag,
+				vfe_dev->axi_data.src_info[i].pix_stream_count,
+				vfe_dev->axi_data.src_info[i].raw_stream_count,
+				vfe_dev->axi_data.src_info[i].frame_id,
+				vfe_dev->axi_data.src_info[i].eof_id);
 			if (vfe_dev->axi_data.stream_update[i] > 0) {
 				pr_err("%s:Stream Update in progress. cnt %d\n",
 					__func__,
@@ -2475,6 +2780,10 @@ static int msm_isp_axi_wait_for_cfg_done(struct vfe_device *vfe_dev,
 	} else {
 		rc = 0;
 	}
+	pr_err("NX549J camera ispdiag: wait_cfg done vfe=%d camif_update=%d src_mask=0x%x rc=%d camif_state=%d pipeline=%d\n",
+		vfe_dev->pdev->id, camif_update, src_mask, rc,
+		vfe_dev->axi_data.camif_state,
+		vfe_dev->axi_data.pipeline_update);
 	return rc;
 }
 
@@ -2942,6 +3251,11 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 	if (stream_cfg_cmd->num_streams > MAX_NUM_STREAM)
 		return -EINVAL;
 
+	pr_err("NX549J camera ispdiag: start_axi enter vfe=%d num=%u camif_update=%d camif_state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->num_streams,
+		camif_update, vfe_dev->axi_data.camif_state,
+		axi_data->num_active_stream);
+
 	if (camif_update == ENABLE_CAMIF) {
 		ISP_DBG("%s: vfe %d camif enable\n", __func__,
 			vfe_dev->pdev->id);
@@ -2957,6 +3271,8 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 		}
 		stream_info = &axi_data->stream_info[
 			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
+		nx549j_isp_diag_stream("start_axi stream", vfe_dev,
+			stream_info);
 		if (SRC_TO_INTF(stream_info->stream_src) < VFE_SRC_MAX)
 			src_state = axi_data->src_info[
 				SRC_TO_INTF(stream_info->stream_src)].active;
@@ -2975,6 +3291,8 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 			pr_err("%s: No buffer for stream%d\n", __func__,
 				HANDLE_TO_IDX(
 				stream_cfg_cmd->stream_handle[i]));
+			nx549j_isp_diag_stream("start_axi no_buffer",
+				vfe_dev, stream_info);
 			spin_unlock_irqrestore(&stream_info->lock, flags);
 			mutex_unlock(&vfe_dev->buf_mgr->lock);
 			return rc;
@@ -2998,12 +3316,19 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 		if (src_state) {
 			src_mask |= (1 << SRC_TO_INTF(stream_info->stream_src));
 			wait_for_complete = 1;
+			pr_err("NX549J camera ispdiag: start_axi wait_for_complete vfe=%d stream=0x%x src_mask=0x%x src_state=%u\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				src_mask, src_state);
 		} else {
 			if (vfe_dev->dump_reg)
 				msm_camera_io_dump(vfe_dev->vfe_base,
 					0x1000, 1);
 
 			/*Configure AXI start bits to start immediately*/
+			pr_err("NX549J camera ispdiag: start_axi immediate_enable vfe=%d stream=0x%x src_state=%u src=%d intf=%d\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				src_state, stream_info->stream_src,
+				SRC_TO_INTF(stream_info->stream_src));
 			msm_isp_axi_stream_enable_cfg(vfe_dev, stream_info, 0);
 			stream_info->state = ACTIVE;
 			vfe_dev->hw_info->vfe_ops.core_ops.reg_update(vfe_dev,
@@ -3066,6 +3391,8 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 			src_mask, 2);
 		if (rc < 0) {
 			pr_err("%s: wait for config done failed\n", __func__);
+			pr_err("NX549J camera ispdiag: start_axi wait_cfg_failed vfe=%d src_mask=0x%x rc=%d\n",
+				vfe_dev->pdev->id, src_mask, rc);
 			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
 				stream_info = &axi_data->stream_info[
 					HANDLE_TO_IDX(
@@ -3080,6 +3407,9 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 		}
 	}
 
+	pr_err("NX549J camera ispdiag: start_axi done vfe=%d rc=%d camif_state=%d active_streams=%u src_mask=0x%x wait=%u\n",
+		vfe_dev->pdev->id, rc, vfe_dev->axi_data.camif_state,
+		axi_data->num_active_stream, src_mask, wait_for_complete);
 	return rc;
 }
 
@@ -3102,6 +3432,11 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		stream_cfg_cmd->num_streams == 0)
 		return -EINVAL;
 
+	pr_err("NX549J camera ispdiag: stop_axi enter vfe=%d cmd=%d num=%u camif_update=%d halt=%d camif_state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->cmd,
+		stream_cfg_cmd->num_streams, camif_update, halt,
+		vfe_dev->axi_data.camif_state, axi_data->num_active_stream);
+
 	msm_isp_get_timestamp(&timestamp, vfe_dev);
 
 	for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
@@ -3111,6 +3446,8 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		}
 		stream_info = &axi_data->stream_info[
 			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
+		nx549j_isp_diag_stream("stop_axi stream", vfe_dev,
+			stream_info);
 		if (stream_info->state == AVAILABLE)
 			continue;
 		/* set ping pong address to scratch before stream stop */
@@ -3271,6 +3608,9 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 			~(BIT(SRC_TO_INTF(stream_info->stream_src)));
 	}
 
+	pr_err("NX549J camera ispdiag: stop_axi done vfe=%d rc=%d camif_state=%d active_streams=%u src_mask=0x%x halt=%d\n",
+		vfe_dev->pdev->id, rc, vfe_dev->axi_data.camif_state,
+		axi_data->num_active_stream, src_mask, halt);
 	return rc;
 }
 
@@ -3283,13 +3623,24 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	enum msm_isp_camif_update_state camif_update;
 	int halt = 0;
 
+	pr_err("NX549J camera ispdiag: cfg_axi enter vfe=%d cmd=%d num=%u camif_state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->cmd,
+		stream_cfg_cmd->num_streams, vfe_dev->axi_data.camif_state,
+		axi_data->num_active_stream);
+
 	rc = msm_isp_axi_check_stream_state(vfe_dev, stream_cfg_cmd);
 	if (rc < 0) {
 		pr_err("%s: Invalid stream state\n", __func__);
+		pr_err("NX549J camera ispdiag: cfg_axi check_state_failed vfe=%d cmd=%d num=%u rc=%d\n",
+			vfe_dev->pdev->id, stream_cfg_cmd->cmd,
+			stream_cfg_cmd->num_streams, rc);
 		return rc;
 	}
 	msm_isp_get_camif_update_state_and_halt(vfe_dev, stream_cfg_cmd,
 		&camif_update, &halt);
+	pr_err("NX549J camera ispdiag: cfg_axi decision vfe=%d cmd=%d camif_update=%d halt=%d camif_state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->cmd, camif_update, halt,
+		vfe_dev->axi_data.camif_state, axi_data->num_active_stream);
 	if (camif_update == DISABLE_CAMIF)
 		vfe_dev->axi_data.camif_state = CAMIF_STOPPING;
 	if (stream_cfg_cmd->cmd == START_STREAM) {
@@ -3321,6 +3672,9 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	if (rc < 0)
 		pr_err("%s: start/stop %d stream failed\n", __func__,
 			stream_cfg_cmd->cmd);
+	pr_err("NX549J camera ispdiag: cfg_axi done vfe=%d cmd=%d rc=%d camif_state=%d active_streams=%u\n",
+		vfe_dev->pdev->id, stream_cfg_cmd->cmd, rc,
+		vfe_dev->axi_data.camif_state, axi_data->num_active_stream);
 	return rc;
 }
 
@@ -3649,18 +4003,42 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	if (update_cmd->num_streams > MAX_NUM_STREAM)
 		return -EINVAL;
 
+	pr_err("NX549J camera ispdiag: update_axi enter vfe=%d type=%d/%s num=%u camif_state=%d active_streams=%u pipeline=%d\n",
+		vfe_dev->pdev->id, update_cmd->update_type,
+		nx549j_isp_update_type_name(update_cmd->update_type),
+		update_cmd->num_streams, vfe_dev->axi_data.camif_state,
+		axi_data->num_active_stream, axi_data->pipeline_update);
+
 	for (i = 0; i < update_cmd->num_streams; i++) {
 		update_info = (struct msm_vfe_axi_stream_cfg_update_info *)
 			&update_cmd->update_info[i];
+		pr_err("NX549J camera ispdiag: update_axi info vfe=%d type=%d/%s idx=%d handle=0x%x handle_idx=%u user_stream=%u frame=%u fmt=0x%x skip=%d\n",
+			vfe_dev->pdev->id, update_cmd->update_type,
+			nx549j_isp_update_type_name(update_cmd->update_type),
+			i, update_info->stream_handle,
+			HANDLE_TO_IDX(update_info->stream_handle),
+			update_info->user_stream_id, update_info->frame_id,
+			update_info->output_format, update_info->skip_pattern);
 		/*check array reference bounds*/
 		if (HANDLE_TO_IDX(update_info->stream_handle) >=
 			VFE_AXI_SRC_MAX) {
+			pr_err("NX549J camera ispdiag: update_axi invalid_handle vfe=%d handle=0x%x idx=%u max=%u\n",
+				vfe_dev->pdev->id, update_info->stream_handle,
+				HANDLE_TO_IDX(update_info->stream_handle),
+				VFE_AXI_SRC_MAX);
 			return -EINVAL;
 		}
 		stream_info = &axi_data->stream_info[
 			HANDLE_TO_IDX(update_info->stream_handle)];
-		if (SRC_TO_INTF(stream_info->stream_src) >= VFE_SRC_MAX)
+		nx549j_isp_diag_stream("update_axi precheck", vfe_dev,
+			stream_info);
+		if (SRC_TO_INTF(stream_info->stream_src) >= VFE_SRC_MAX) {
+			pr_err("NX549J camera ispdiag: update_axi skip_bad_src vfe=%d handle=0x%x src=%d intf=%d\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_src,
+				SRC_TO_INTF(stream_info->stream_src));
 			continue;
+		}
 		if (stream_info->state != ACTIVE &&
 			stream_info->state != INACTIVE &&
 			update_cmd->update_type !=
@@ -3669,15 +4047,19 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 			UPDATE_STREAM_REMOVE_BUFQ &&
 			update_cmd->update_type !=
 			UPDATE_STREAM_SW_FRAME_DROP) {
-			pr_err("%s: Invalid stream state %d, update cmd %d\n",
-				__func__, stream_info->state,
-				stream_info->stream_id);
-			return -EINVAL;
-		}
+				pr_err("%s: Invalid stream state %d, update cmd %d\n",
+					__func__, stream_info->state,
+					stream_info->stream_id);
+				nx549j_isp_diag_stream("update_axi invalid_state",
+					vfe_dev, stream_info);
+				return -EINVAL;
+			}
 		if (update_cmd->update_type == UPDATE_STREAM_AXI_CONFIG &&
 			atomic_read(&axi_data->axi_cfg_update[
 				SRC_TO_INTF(stream_info->stream_src)])) {
 			pr_err("%s: AXI stream config updating\n", __func__);
+			nx549j_isp_diag_stream("update_axi busy_cfg_update",
+				vfe_dev, stream_info);
 			return -EBUSY;
 		}
 	}
@@ -3933,6 +4315,12 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		return -EINVAL;
 	}
 
+	pr_err("NX549J camera ispdiag: update_axi done vfe=%d type=%d/%s rc=%d camif_state=%d active_streams=%u pipeline=%d\n",
+		vfe_dev->pdev->id, update_cmd->update_type,
+		nx549j_isp_update_type_name(update_cmd->update_type), rc,
+		vfe_dev->axi_data.camif_state, axi_data->num_active_stream,
+		axi_data->pipeline_update);
+
 	return rc;
 }
 
@@ -3988,6 +4376,18 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		return;
 	}
 	done_buf = stream_info->buf[pingpong_bit];
+	if (nx549j_isp_diag_is_burst_stream(stream_info))
+		pr_err("NX549J camera ispdiag: axi_irq_stream enter vfe=%d handle=0x%x stream=%u state=%d type=%d frame=%u local_frame=%u pp_status=0x%x pp_bit=%u done_buf=%pK done_idx=%d done_bufq=0x%x runtime_burst=%u num_burst=%u undelivered=%u q_cnt=%u buf_divert=%u\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			stream_info->stream_id, stream_info->state,
+			stream_info->stream_type, frame_id,
+			stream_info->frame_id, pingpong_status, pingpong_bit,
+			done_buf, done_buf ? (int)done_buf->buf_idx : -1,
+			done_buf ? done_buf->bufq_handle : 0,
+			stream_info->runtime_num_burst_capture,
+			stream_info->num_burst_capture,
+			stream_info->undelivered_request_cnt,
+			stream_info->request_q_cnt, stream_info->buf_divert);
 
 	if (vfe_dev->buf_mgr->frameId_mismatch_recovery == 1) {
 		pr_err_ratelimited("%s: Mismatch Recovery in progress, drop frame!\n",
@@ -4012,6 +4412,13 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		done_buf ? done_buf->bufq_handle :
 		stream_info->bufq_handle[VFE_BUF_QUEUE_DEFAULT], buf_index,
 		time_stamp, frame_id, pingpong_bit);
+	if (nx549j_isp_diag_is_burst_stream(stream_info))
+		pr_err("NX549J camera ispdiag: axi_irq_stream put_cnt vfe=%d handle=0x%x stream=%u frame=%u bufq=0x%x idx=%d pp_bit=%u rc=%d\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			stream_info->stream_id, frame_id,
+			done_buf ? done_buf->bufq_handle :
+				stream_info->bufq_handle[VFE_BUF_QUEUE_DEFAULT],
+			buf_index, pingpong_bit, rc);
 
 	if (rc < 0) {
 		spin_unlock_irqrestore(&stream_info->lock, flags);
@@ -4026,6 +4433,10 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 	 * A negative value is error. Return in both cases.
 	 */
 	if (rc != 0) {
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: axi_irq_stream put_cnt_deferred vfe=%d handle=0x%x stream=%u frame=%u rc=%d\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, frame_id, rc);
 		spin_unlock_irqrestore(&stream_info->lock, flags);
 		return;
 	}
@@ -4046,6 +4457,14 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 	}
 
 	if (!done_buf) {
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: axi_irq_stream no_done_buf vfe=%d handle=0x%x stream=%u frame=%u pp_status=0x%x pp_bit=%u buf_divert=%u default_bufq=0x%x\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, frame_id,
+				pingpong_status, pingpong_bit,
+				stream_info->buf_divert,
+				stream_info->bufq_handle[
+					VFE_BUF_QUEUE_DEFAULT]);
 		if (stream_info->buf_divert) {
 			vfe_dev->error_info.stream_framedrop_count[
 				stream_info->bufq_handle[
@@ -4094,11 +4513,22 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 
 	if ((done_buf->frame_id != frame_id) &&
 		vfe_dev->axi_data.enable_frameid_recovery) {
+		if (nx549j_isp_diag_is_burst_stream(stream_info))
+			pr_err("NX549J camera ispdiag: axi_irq_stream frame_mismatch vfe=%d handle=0x%x stream=%u buf_frame=%u irq_frame=%u\n",
+				vfe_dev->pdev->id, stream_info->stream_handle,
+				stream_info->stream_id, done_buf->frame_id,
+				frame_id);
 		msm_isp_handle_done_buf_frame_id_mismatch(vfe_dev,
 			stream_info, done_buf, time_stamp, frame_id);
 		return;
 	}
 
+	if (nx549j_isp_diag_is_burst_stream(stream_info))
+		pr_err("NX549J camera ispdiag: axi_irq_stream process_done vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x runtime_fmt=0x%x\n",
+			vfe_dev->pdev->id, stream_info->stream_handle,
+			stream_info->stream_id, frame_id, done_buf->buf_idx,
+			done_buf->bufq_handle,
+			stream_info->runtime_output_format);
 	msm_isp_process_done_buf(vfe_dev, stream_info,
 			done_buf, time_stamp, frame_id);
 }
@@ -4121,6 +4551,16 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 		get_wm_mask(irq_status0, irq_status1);
 	if (!(comp_mask || wm_mask))
 		return;
+
+	/*
+	 * NX549J camera bring-up: promoted to pr_err_ratelimited for the
+	 * frozen-preview hunt — shows whether WM/comp done IRQs keep firing
+	 * after the first frame on the continuous (non-burst) preview stream.
+	 */
+	pr_err_ratelimited("NX549J camera ispdiag: axi_irq masks vfe=%d irq0=0x%x irq1=0x%x pp=0x%x comp=0x%x wm=0x%x active_streams=%u\n",
+		vfe_dev->pdev->id, irq_status0, irq_status1,
+		pingpong_status, comp_mask, wm_mask,
+		axi_data->num_active_stream);
 
 	ISP_DBG("%s: status: 0x%x\n", __func__, irq_status0);
 
@@ -4145,6 +4585,12 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 			}
 			stream_idx = HANDLE_TO_IDX(comp_info->stream_handle);
 			stream_info = &axi_data->stream_info[stream_idx];
+			if (nx549j_isp_diag_is_burst_stream(stream_info))
+				pr_err("NX549J camera ispdiag: axi_irq comp_hit vfe=%d comp=%d handle=0x%x stream=%u comp_mask=0x%x wm_remaining=0x%x pp=0x%x\n",
+					vfe_dev->pdev->id, i,
+					stream_info->stream_handle,
+					stream_info->stream_id, comp_mask,
+					wm_mask, pingpong_status);
 			msm_isp_process_axi_irq_stream(vfe_dev, stream_info,
 						pingpong_status, ts);
 
@@ -4163,6 +4609,12 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 				continue;
 			}
 			stream_info = &axi_data->stream_info[stream_idx];
+			if (nx549j_isp_diag_is_burst_stream(stream_info))
+				pr_err("NX549J camera ispdiag: axi_irq wm_hit vfe=%d wm=%d handle=0x%x stream=%u wm_mask=0x%x pp=0x%x free_wm=0x%x\n",
+					vfe_dev->pdev->id, i,
+					stream_info->stream_handle,
+					stream_info->stream_id, wm_mask,
+					pingpong_status, axi_data->free_wm[i]);
 
 			msm_isp_process_axi_irq_stream(vfe_dev, stream_info,
 						pingpong_status, ts);
