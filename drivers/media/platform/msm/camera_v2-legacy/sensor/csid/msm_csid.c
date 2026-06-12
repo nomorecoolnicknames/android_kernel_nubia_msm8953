@@ -72,6 +72,72 @@ static struct camera_vreg_t csid_vreg_info[] = {
 	{"qcom,mipi-csi-vdd", 0, 0, 12000},
 };
 
+static void nx549j_csid_dump_irq(struct csid_device *csid_dev,
+	const char *where, uint32_t irq)
+{
+	uint32_t lane_overflow_2p = 0;
+	uint32_t lane_overflow_3p = 0;
+	uint32_t rst_done;
+	uint32_t total_pkts;
+	uint32_t ecc;
+	uint32_t crc;
+	uint32_t short_pkt;
+	uint32_t long_hdr;
+	uint32_t long_ftr;
+	uint32_t pif0;
+	uint32_t pif1;
+	uint32_t lanes;
+	uint32_t lane_mask = 0;
+
+	if (!csid_dev || !csid_dev->ctrl_reg)
+		return;
+
+	lanes = csid_dev->current_csid_params.lane_cnt;
+	if (lanes > MAX_LANE_COUNT)
+		lanes = MAX_LANE_COUNT;
+	if (lanes > 0)
+		lane_mask = (1 << lanes) - 1;
+
+	if (lane_mask) {
+		lane_overflow_2p = irq & (lane_mask <<
+			csid_dev->ctrl_reg->csid_reg.csid_err_lane_overflow_offset_2p);
+		lane_overflow_3p = irq & (lane_mask <<
+			csid_dev->ctrl_reg->csid_reg.csid_err_lane_overflow_offset_3p);
+	}
+
+	rst_done = !!(irq & (0x1 <<
+		csid_dev->ctrl_reg->csid_reg.csid_rst_done_irq_bitshift));
+	total_pkts = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_stats_total_pkts_rcvd_addr);
+	ecc = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_stats_ecc_addr);
+	crc = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_stats_crc_addr);
+	short_pkt = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_captured_short_pkt_addr);
+	long_hdr = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_captured_long_pkt_hdr_addr);
+	long_ftr = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_captured_long_pkt_ftr_addr);
+	pif0 = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_pif_misr_dl0_addr);
+	pif1 = msm_camera_io_r(csid_dev->base +
+		csid_dev->ctrl_reg->csid_reg.csid_pif_misr_dl1_addr);
+
+	pr_err_ratelimited("NX549J camera csiddiag: %s id=%d irq=0x%x rst_done=%u lane_overflow_2p=0x%x lane_overflow_3p=0x%x irq_mask_val=0x%x lane_cnt=%u lane_assign=0x%x phy_sel=%u csi_clk=%u csi_3p_sel=%u num_cid=%u state=%d 3p=%u total_pkts=0x%x ecc=0x%x crc=0x%x short=0x%x long_hdr=0x%x long_ftr=0x%x pif0=0x%x pif1=0x%x\n",
+		where, csid_dev->pdev ? csid_dev->pdev->id : -1, irq,
+		rst_done, lane_overflow_2p, lane_overflow_3p,
+		csid_dev->ctrl_reg->csid_reg.csid_irq_mask_val,
+		csid_dev->current_csid_params.lane_cnt,
+		csid_dev->current_csid_params.lane_assign,
+		csid_dev->current_csid_params.phy_sel,
+		csid_dev->current_csid_params.csi_clk,
+		csid_dev->current_csid_params.csi_3p_sel,
+		csid_dev->current_csid_params.lut_params.num_cid,
+		csid_dev->csid_state, csid_dev->csid_3p_enabled,
+		total_pkts, ecc, crc, short_pkt, long_hdr, long_ftr, pif0, pif1);
+}
+
 #ifdef CONFIG_COMPAT
 static struct v4l2_file_operations msm_csid_v4l2_subdev_fops;
 #endif
@@ -498,6 +564,7 @@ static irqreturn_t msm_csid_irq(int irq_num, void *data)
 		csid_dev->ctrl_reg->csid_reg.csid_irq_status_addr);
 	pr_err_ratelimited("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
 		 __func__, csid_dev->pdev->id, irq);
+	nx549j_csid_dump_irq(csid_dev, "irq", irq);
 	if (irq & (0x1 <<
 		csid_dev->ctrl_reg->csid_reg.csid_rst_done_irq_bitshift))
 		complete(&csid_dev->reset_complete);
@@ -772,6 +839,12 @@ static int32_t msm_csid_cmd(struct csid_device *csid_dev, void __user *arg)
 				goto MEM_CLEAN;
 			}
 			csid_params.lut_params.vc_cfg[i] = vc_cfg;
+			pr_err("NX549J camera csiddiag: cfg cid[%d]=%u dt=0x%x decode=%u num_cid=%u lane_cnt=%u lane_assign=0x%x\n",
+				i, vc_cfg->cid, vc_cfg->dt,
+				vc_cfg->decode_format,
+				csid_params.lut_params.num_cid,
+				csid_params.lane_cnt,
+				csid_params.lane_assign);
 		}
 		csid_dev->current_csid_params = csid_params;
 		csid_dev->csid_sof_debug = SOF_DEBUG_DISABLE;
@@ -953,6 +1026,12 @@ static int32_t msm_csid_cmd32(struct csid_device *csid_dev, void __user *arg)
 			vc_cfg->dt = vc_cfg32.dt;
 			vc_cfg->decode_format = vc_cfg32.decode_format;
 			csid_params.lut_params.vc_cfg[i] = vc_cfg;
+			pr_err("NX549J camera csiddiag: cfg32 cid[%d]=%u dt=0x%x decode=%u num_cid=%u lane_cnt=%u lane_assign=0x%x\n",
+				i, vc_cfg->cid, vc_cfg->dt,
+				vc_cfg->decode_format,
+				csid_params.lut_params.num_cid,
+				csid_params.lane_cnt,
+				csid_params.lane_assign);
 		}
 		rc = msm_csid_config(csid_dev, &csid_params);
 		pr_err("NX549J camera diag: %s cfg rc=%d state=%d\n",

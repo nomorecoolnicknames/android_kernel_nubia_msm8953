@@ -25,6 +25,113 @@
 static struct msm_camera_i2c_fn_t msm_sensor_cci_func_tbl;
 static struct msm_camera_i2c_fn_t msm_sensor_secure_func_tbl;
 
+static const char *nx549j_sensor_cfg_name(int32_t cfgtype)
+{
+	switch (cfgtype) {
+	case CFG_SET_SLAVE_INFO:
+		return "CFG_SET_SLAVE_INFO";
+	case CFG_SLAVE_READ_I2C:
+		return "CFG_SLAVE_READ_I2C";
+	case CFG_WRITE_I2C_ARRAY:
+		return "CFG_WRITE_I2C_ARRAY";
+	case CFG_SLAVE_WRITE_I2C_ARRAY:
+		return "CFG_SLAVE_WRITE_I2C_ARRAY";
+	case CFG_WRITE_I2C_SEQ_ARRAY:
+		return "CFG_WRITE_I2C_SEQ_ARRAY";
+	case CFG_POWER_UP:
+		return "CFG_POWER_UP";
+	case CFG_POWER_DOWN:
+		return "CFG_POWER_DOWN";
+	case CFG_SET_STOP_STREAM_SETTING:
+		return "CFG_SET_STOP_STREAM_SETTING";
+	case CFG_GET_SENSOR_INFO:
+		return "CFG_GET_SENSOR_INFO";
+	case CFG_GET_SENSOR_INIT_PARAMS:
+		return "CFG_GET_SENSOR_INIT_PARAMS";
+	case CFG_SET_INIT_SETTING:
+		return "CFG_SET_INIT_SETTING";
+	case CFG_SET_RESOLUTION:
+		return "CFG_SET_RESOLUTION";
+	case CFG_SET_STOP_STREAM:
+		return "CFG_SET_STOP_STREAM";
+	case CFG_SET_START_STREAM:
+		return "CFG_SET_START_STREAM";
+	case CFG_SET_SATURATION:
+		return "CFG_SET_SATURATION";
+	case CFG_SET_CONTRAST:
+		return "CFG_SET_CONTRAST";
+	case CFG_SET_SHARPNESS:
+		return "CFG_SET_SHARPNESS";
+	case CFG_SET_ISO:
+		return "CFG_SET_ISO";
+	case CFG_SET_EXPOSURE_COMPENSATION:
+		return "CFG_SET_EXPOSURE_COMPENSATION";
+	case CFG_SET_ANTIBANDING:
+		return "CFG_SET_ANTIBANDING";
+	case CFG_SET_BESTSHOT_MODE:
+		return "CFG_SET_BESTSHOT_MODE";
+	case CFG_SET_EFFECT:
+		return "CFG_SET_EFFECT";
+	case CFG_SET_WHITE_BALANCE:
+		return "CFG_SET_WHITE_BALANCE";
+	case CFG_SET_AUTOFOCUS:
+		return "CFG_SET_AUTOFOCUS";
+	case CFG_CANCEL_AUTOFOCUS:
+		return "CFG_CANCEL_AUTOFOCUS";
+	case CFG_SET_STREAM_TYPE:
+		return "CFG_SET_STREAM_TYPE";
+	case CFG_SET_I2C_SYNC_PARAM:
+		return "CFG_SET_I2C_SYNC_PARAM";
+	case CFG_WRITE_I2C_ARRAY_ASYNC:
+		return "CFG_WRITE_I2C_ARRAY_ASYNC";
+	case CFG_WRITE_I2C_ARRAY_SYNC:
+		return "CFG_WRITE_I2C_ARRAY_SYNC";
+	case CFG_WRITE_I2C_ARRAY_SYNC_BLOCK:
+		return "CFG_WRITE_I2C_ARRAY_SYNC_BLOCK";
+	default:
+		return "CFG_UNKNOWN";
+	}
+}
+
+static void nx549j_log_i2c_setting(const char *tag,
+	struct msm_sensor_ctrl_t *s_ctrl, int32_t cfgtype,
+	struct msm_camera_i2c_reg_setting *setting, int32_t rc)
+{
+	int i;
+	int start_tail = 0;
+
+	if (!setting || !setting->reg_setting) {
+		pr_err("NX549J camera diag: sensor_i2c %s sensor=%s cfgtype=%d/%s state=%d empty rc=%d\n",
+			tag, s_ctrl->sensordata->sensor_name, cfgtype,
+			nx549j_sensor_cfg_name(cfgtype),
+			s_ctrl->sensor_state, rc);
+		return;
+	}
+
+	pr_err("NX549J camera diag: sensor_i2c %s sensor=%s cfgtype=%d/%s state=%d size=%u addr_type=%d data_type=%d delay=%u rc=%d\n",
+		tag, s_ctrl->sensordata->sensor_name, cfgtype,
+		nx549j_sensor_cfg_name(cfgtype),
+		s_ctrl->sensor_state, setting->size, setting->addr_type,
+		setting->data_type, setting->delay, rc);
+
+	for (i = 0; i < setting->size && i < 4; i++)
+		pr_err("NX549J camera diag: sensor_i2c %s[%d] addr=0x%x data=0x%x delay=%u\n",
+			tag, i, setting->reg_setting[i].reg_addr,
+			setting->reg_setting[i].reg_data,
+			setting->reg_setting[i].delay);
+
+	if (setting->size > 6)
+		start_tail = setting->size - 2;
+	else
+		start_tail = 4;
+
+	for (i = start_tail; i < setting->size; i++)
+		pr_err("NX549J camera diag: sensor_i2c %s[%d] addr=0x%x data=0x%x delay=%u\n",
+			tag, i, setting->reg_setting[i].reg_addr,
+			setting->reg_setting[i].reg_data,
+			setting->reg_setting[i].delay);
+}
+
 static void msm_sensor_adjust_mclk(struct msm_camera_power_ctrl_t *ctrl)
 {
 	int idx;
@@ -421,6 +528,10 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("%s:%d %s cfgtype = %d\n", __func__, __LINE__,
 		s_ctrl->sensordata->sensor_name, cdata->cfgtype);
+	pr_err("NX549J camera diag: sensor_config32 enter sensor=%s cfgtype=%d/%s state=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		nx549j_sensor_cfg_name(cdata->cfgtype),
+		s_ctrl->sensor_state);
 	switch (cdata->cfgtype) {
 	case CFG_GET_SENSOR_INFO:
 		memcpy(cdata->cfg.sensor_info.sensor_name,
@@ -531,6 +642,8 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		}
 
 		conf_array.reg_setting = reg_setting;
+		nx549j_log_i2c_setting("write32-pre", s_ctrl,
+			cdata->cfgtype, &conf_array, 0);
 
 		if (cdata->cfgtype == CFG_WRITE_I2C_ARRAY)
 			rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
@@ -550,6 +663,8 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 				i2c_write_table_sync(s_ctrl->sensor_i2c_client,
 				&conf_array);
 
+		nx549j_log_i2c_setting("write32-post", s_ctrl,
+			cdata->cfgtype, &conf_array, rc);
 		kfree(reg_setting);
 		break;
 	}
@@ -920,6 +1035,8 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 			rc = -EFAULT;
 			break;
 		}
+		nx549j_log_i2c_setting("stop32-cache", s_ctrl,
+			cdata->cfgtype, stop_setting, rc);
 		break;
 	}
 
@@ -963,6 +1080,10 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	}
 
 DONE:
+	pr_err("NX549J camera diag: sensor_config32 done sensor=%s cfgtype=%d/%s state=%d rc=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		nx549j_sensor_cfg_name(cdata->cfgtype),
+		s_ctrl->sensor_state, rc);
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 
 	return rc;
@@ -978,6 +1099,10 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("%s:%d %s cfgtype = %d\n", __func__, __LINE__,
 		s_ctrl->sensordata->sensor_name, cdata->cfgtype);
+	pr_err("NX549J camera diag: sensor_config enter sensor=%s cfgtype=%d/%s state=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		nx549j_sensor_cfg_name(cdata->cfgtype),
+		s_ctrl->sensor_state);
 	switch (cdata->cfgtype) {
 	case CFG_GET_SENSOR_INFO:
 		memcpy(cdata->cfg.sensor_info.sensor_name,
@@ -1077,6 +1202,8 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 		}
 
 		conf_array.reg_setting = reg_setting;
+		nx549j_log_i2c_setting("write-pre", s_ctrl,
+			cdata->cfgtype, &conf_array, 0);
 		if (cdata->cfgtype == CFG_WRITE_I2C_ARRAY)
 			rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
 				i2c_write_table(s_ctrl->sensor_i2c_client,
@@ -1095,6 +1222,8 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 				i2c_write_table_sync(s_ctrl->sensor_i2c_client,
 					&conf_array);
 
+		nx549j_log_i2c_setting("write-post", s_ctrl,
+			cdata->cfgtype, &conf_array, rc);
 		kfree(reg_setting);
 		break;
 	}
@@ -1409,6 +1538,8 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 			rc = -EFAULT;
 			break;
 		}
+		nx549j_log_i2c_setting("stop-cache", s_ctrl,
+			cdata->cfgtype, stop_setting, rc);
 		break;
 	}
 
@@ -1452,6 +1583,10 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 	}
 
 DONE:
+	pr_err("NX549J camera diag: sensor_config done sensor=%s cfgtype=%d/%s state=%d rc=%d\n",
+		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
+		nx549j_sensor_cfg_name(cdata->cfgtype),
+		s_ctrl->sensor_state, rc);
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 
 	return rc;

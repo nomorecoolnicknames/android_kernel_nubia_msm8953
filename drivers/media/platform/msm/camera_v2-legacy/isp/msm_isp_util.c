@@ -36,6 +36,136 @@ static DEFINE_SPINLOCK(dump_tasklet_lock);
 
 #define VFE40_8974V2_VERSION 0x1001001A
 
+#ifndef CONFIG_MACH_XIAOMI_C6
+struct nx549j_msm_vfe_axi_stream_cfg_cmd_compat {
+	uint8_t num_streams;
+	uint32_t stream_handle[VFE_AXI_SRC_MAX];
+	enum msm_vfe_axi_stream_cmd cmd;
+	uint8_t sync_frame_id_src;
+};
+
+#define VIDIOC_MSM_ISP_CFG_STREAM_NX549J_COMPAT \
+	_IOWR('V', MSM_ISP_CFG_STREAM, \
+		struct nx549j_msm_vfe_axi_stream_cfg_cmd_compat)
+#endif
+
+static const char *nx549j_isp_ioctl_name(unsigned int cmd)
+{
+	switch (cmd) {
+	case VIDIOC_MSM_VFE_REG_CFG:
+		return "VIDIOC_MSM_VFE_REG_CFG";
+	case VIDIOC_MSM_VFE_REG_LIST_CFG:
+		return "VIDIOC_MSM_VFE_REG_LIST_CFG";
+	case VIDIOC_MSM_ISP_REQUEST_BUF:
+		return "VIDIOC_MSM_ISP_REQUEST_BUF";
+	case VIDIOC_MSM_ISP_ENQUEUE_BUF:
+		return "VIDIOC_MSM_ISP_ENQUEUE_BUF";
+	case VIDIOC_MSM_ISP_DEQUEUE_BUF:
+		return "VIDIOC_MSM_ISP_DEQUEUE_BUF";
+	case VIDIOC_MSM_ISP_UNMAP_BUF:
+		return "VIDIOC_MSM_ISP_UNMAP_BUF";
+	case VIDIOC_MSM_ISP_RELEASE_BUF:
+		return "VIDIOC_MSM_ISP_RELEASE_BUF";
+	case VIDIOC_MSM_ISP_REQUEST_STREAM:
+		return "VIDIOC_MSM_ISP_REQUEST_STREAM";
+	case VIDIOC_MSM_ISP_RELEASE_STREAM:
+		return "VIDIOC_MSM_ISP_RELEASE_STREAM";
+	case VIDIOC_MSM_ISP_CFG_STREAM:
+		return "VIDIOC_MSM_ISP_CFG_STREAM";
+#ifndef CONFIG_MACH_XIAOMI_C6
+	case VIDIOC_MSM_ISP_CFG_STREAM_NX549J_COMPAT:
+		return "VIDIOC_MSM_ISP_CFG_STREAM_NX549J_COMPAT";
+#endif
+#ifndef CONFIG_MACH_XIAOMI_C6
+	case VIDIOC_MSM_ISP_CFG_HW_STATE:
+		return "VIDIOC_MSM_ISP_CFG_HW_STATE";
+#endif
+	case VIDIOC_MSM_ISP_AXI_HALT:
+		return "VIDIOC_MSM_ISP_AXI_HALT";
+	case VIDIOC_MSM_ISP_AXI_RESET:
+		return "VIDIOC_MSM_ISP_AXI_RESET";
+	case VIDIOC_MSM_ISP_AXI_RESTART:
+		return "VIDIOC_MSM_ISP_AXI_RESTART";
+	case VIDIOC_MSM_ISP_INPUT_CFG:
+		return "VIDIOC_MSM_ISP_INPUT_CFG";
+	case VIDIOC_MSM_ISP_AHB_CLK_CFG:
+		return "VIDIOC_MSM_ISP_AHB_CLK_CFG";
+	case VIDIOC_MSM_ISP_SET_DUAL_HW_MASTER_SLAVE:
+		return "VIDIOC_MSM_ISP_SET_DUAL_HW_MASTER_SLAVE";
+	case VIDIOC_MSM_ISP_FETCH_ENG_START:
+		return "VIDIOC_MSM_ISP_FETCH_ENG_START";
+	case VIDIOC_MSM_ISP_MAP_BUF_START_FE:
+		return "VIDIOC_MSM_ISP_MAP_BUF_START_FE";
+	case VIDIOC_MSM_ISP_FETCH_ENG_MULTI_PASS_START:
+		return "VIDIOC_MSM_ISP_FETCH_ENG_MULTI_PASS_START";
+	case VIDIOC_MSM_ISP_MAP_BUF_START_MULTI_PASS_FE:
+		return "VIDIOC_MSM_ISP_MAP_BUF_START_MULTI_PASS_FE";
+	case VIDIOC_MSM_ISP_RESTART_FE:
+		return "VIDIOC_MSM_ISP_RESTART_FE";
+	case VIDIOC_MSM_ISP_UPDATE_FE_FRAME_ID:
+		return "VIDIOC_MSM_ISP_UPDATE_FE_FRAME_ID";
+	case VIDIOC_MSM_ISP_REG_UPDATE_CMD:
+		return "VIDIOC_MSM_ISP_REG_UPDATE_CMD";
+	case VIDIOC_MSM_ISP_SET_SRC_STATE:
+		return "VIDIOC_MSM_ISP_SET_SRC_STATE";
+	case VIDIOC_MSM_ISP_REQUEST_STATS_STREAM:
+		return "VIDIOC_MSM_ISP_REQUEST_STATS_STREAM";
+	case VIDIOC_MSM_ISP_RELEASE_STATS_STREAM:
+		return "VIDIOC_MSM_ISP_RELEASE_STATS_STREAM";
+	case VIDIOC_MSM_ISP_CFG_STATS_STREAM:
+		return "VIDIOC_MSM_ISP_CFG_STATS_STREAM";
+	case VIDIOC_MSM_ISP_UPDATE_STATS_STREAM:
+		return "VIDIOC_MSM_ISP_UPDATE_STATS_STREAM";
+	case VIDIOC_MSM_ISP_UPDATE_STREAM:
+		return "VIDIOC_MSM_ISP_UPDATE_STREAM";
+	case VIDIOC_MSM_ISP_SMMU_ATTACH:
+		return "VIDIOC_MSM_ISP_SMMU_ATTACH";
+	case MSM_SD_NOTIFY_FREEZE:
+		return "MSM_SD_NOTIFY_FREEZE";
+	case MSM_SD_UNNOTIFY_FREEZE:
+		return "MSM_SD_UNNOTIFY_FREEZE";
+	case MSM_SD_SHUTDOWN:
+		return "MSM_SD_SHUTDOWN";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static bool nx549j_isp_ioctl_should_log(unsigned int cmd)
+{
+	switch (cmd) {
+	case VIDIOC_MSM_VFE_REG_CFG:
+	case VIDIOC_MSM_VFE_REG_LIST_CFG:
+	case VIDIOC_MSM_ISP_ENQUEUE_BUF:
+	case VIDIOC_MSM_ISP_DEQUEUE_BUF:
+	case VIDIOC_MSM_ISP_REG_UPDATE_CMD:
+		return false;
+	default:
+		return true;
+	}
+}
+
+static bool nx549j_isp_has_burst_stream(struct vfe_device *vfe_dev)
+{
+	int i;
+	struct msm_vfe_axi_stream *stream_info;
+
+	if (!vfe_dev)
+		return false;
+
+	for (i = 0; i < VFE_AXI_SRC_MAX; i++) {
+		stream_info = &vfe_dev->axi_data.stream_info[i];
+		if (stream_info->state == AVAILABLE ||
+			stream_info->state == INACTIVE)
+			continue;
+		if (stream_info->stream_type == BURST_STREAM ||
+			stream_info->num_burst_capture ||
+			stream_info->runtime_num_burst_capture)
+			return true;
+	}
+	return false;
+}
+
 void msm_isp_print_fourcc_error(const char *origin, uint32_t fourcc_format)
 {
 	int i;
@@ -827,9 +957,18 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 			__func__, __LINE__, vfe_dev);
 		if (vfe_dev)
 			pr_err("%s:%d failed %pK\n", __func__,
-				__LINE__, vfe_dev->vfe_base);
+			__LINE__, vfe_dev->vfe_base);
 		return -EINVAL;
 	}
+
+	if (nx549j_isp_ioctl_should_log(cmd))
+		pr_err("NX549J camera ispdiag: ioctl enter vfe=%d cmd=%s raw=0x%x nr=%u size=%u dir=%u camif_state=%d active_streams=%u overflow=%d open_cnt=%u\n",
+			vfe_dev->pdev->id, nx549j_isp_ioctl_name(cmd), cmd,
+			_IOC_NR(cmd), _IOC_SIZE(cmd), _IOC_DIR(cmd),
+			vfe_dev->axi_data.camif_state,
+			vfe_dev->axi_data.num_active_stream,
+			atomic_read(&vfe_dev->error_info.overflow_state),
+			vfe_dev->vfe_open_cnt);
 
 	/* use real time mutex for hard real-time ioctls such as
 	 * buffer operations and register updates.
@@ -889,6 +1028,28 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 		rc = msm_isp_cfg_axi_stream(vfe_dev, arg);
 		mutex_unlock(&vfe_dev->core_mutex);
 		break;
+#ifndef CONFIG_MACH_XIAOMI_C6
+	case VIDIOC_MSM_ISP_CFG_STREAM_NX549J_COMPAT: {
+		struct nx549j_msm_vfe_axi_stream_cfg_cmd_compat *compat;
+		struct msm_vfe_axi_stream_cfg_cmd cfg;
+
+		compat = arg;
+		memset(&cfg, 0, sizeof(cfg));
+		cfg.num_streams = compat->num_streams;
+		memcpy(cfg.stream_handle, compat->stream_handle,
+			sizeof(cfg.stream_handle));
+		cfg.cmd = compat->cmd;
+		cfg.sync_frame_id_src = compat->sync_frame_id_src;
+		cfg.hw_state = HW_STATE_AWAKE;
+		pr_err("NX549J camera ispdiag: cfg_stream compat44 cmd=%d num=%u sync=%u default_hw_state=%d\n",
+			cfg.cmd, cfg.num_streams, cfg.sync_frame_id_src,
+			cfg.hw_state);
+		mutex_lock(&vfe_dev->core_mutex);
+		rc = msm_isp_cfg_axi_stream(vfe_dev, &cfg);
+		mutex_unlock(&vfe_dev->core_mutex);
+		break;
+	}
+#endif
 #ifndef CONFIG_MACH_XIAOMI_C6
 	case VIDIOC_MSM_ISP_CFG_HW_STATE:
 		mutex_lock(&vfe_dev->core_mutex);
@@ -1038,6 +1199,12 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 				    cmd);
 		rc = -EINVAL;
 	}
+	if (nx549j_isp_ioctl_should_log(cmd) || rc < 0)
+		pr_err("NX549J camera ispdiag: ioctl done vfe=%d cmd=%s raw=0x%x rc=%ld camif_state=%d active_streams=%u overflow=%d\n",
+			vfe_dev->pdev->id, nx549j_isp_ioctl_name(cmd), cmd,
+			rc, vfe_dev->axi_data.camif_state,
+			vfe_dev->axi_data.num_active_stream,
+			atomic_read(&vfe_dev->error_info.overflow_state));
 	return rc;
 }
 
@@ -2043,6 +2210,13 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	}
 	ping_pong_status = vfe_dev->hw_info->vfe_ops.axi_ops.
 		get_pingpong_status(vfe_dev);
+	if (nx549j_isp_has_burst_stream(vfe_dev))
+		pr_err_ratelimited("NX549J camera ispdiag: irq burst_active vfe=%d raw_irq0=0x%x raw_irq1=0x%x pp=0x%x camif_state=%d active_streams=%u open_cnt=%u overflow=%d\n",
+			vfe_dev->pdev->id, irq_status0, irq_status1,
+			ping_pong_status, vfe_dev->axi_data.camif_state,
+			vfe_dev->axi_data.num_active_stream,
+			vfe_dev->vfe_open_cnt,
+			atomic_read(&vfe_dev->error_info.overflow_state));
 	if (vfe_dev->hw_info->vfe_ops.irq_ops.process_eof_irq) {
 		vfe_dev->hw_info->vfe_ops.irq_ops.process_eof_irq(vfe_dev,
 			irq_status0);

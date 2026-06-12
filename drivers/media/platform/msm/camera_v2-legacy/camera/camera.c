@@ -36,6 +36,9 @@
 #define fh_to_private(__fh) \
 	container_of(__fh, struct camera_v4l2_private, fh)
 
+#define NX549J_CAMERA_CAM_PRIV_BASE \
+	(V4L2_CID_PRIVATE_BASE + MSM_CAMERA_PRIV_CMD_MAX)
+
 struct camera_v4l2_private {
 	struct v4l2_fh fh;
 	unsigned int stream_id;
@@ -45,6 +48,86 @@ struct camera_v4l2_private {
 	struct mutex lock;
 };
 
+static const char *nx549j_camera_priv_command_name(unsigned int command)
+{
+	switch (command) {
+	case MSM_CAMERA_PRIV_S_CROP:
+		return "S_CROP";
+	case MSM_CAMERA_PRIV_G_CROP:
+		return "G_CROP";
+	case MSM_CAMERA_PRIV_G_FMT:
+		return "G_FMT";
+	case MSM_CAMERA_PRIV_S_FMT:
+		return "S_FMT";
+	case MSM_CAMERA_PRIV_TRY_FMT:
+		return "TRY_FMT";
+	case MSM_CAMERA_PRIV_METADATA:
+		return "METADATA";
+	case MSM_CAMERA_PRIV_QUERY_CAP:
+		return "QUERY_CAP";
+	case MSM_CAMERA_PRIV_STREAM_ON:
+		return "STREAM_ON";
+	case MSM_CAMERA_PRIV_STREAM_OFF:
+		return "STREAM_OFF";
+	case MSM_CAMERA_PRIV_NEW_STREAM:
+		return "NEW_STREAM";
+	case MSM_CAMERA_PRIV_DEL_STREAM:
+		return "DEL_STREAM";
+	case MSM_CAMERA_PRIV_SHUTDOWN:
+		return "SHUTDOWN";
+	case MSM_CAMERA_PRIV_STREAM_INFO_SYNC:
+		return "STREAM_INFO_SYNC";
+	case MSM_CAMERA_PRIV_G_SESSION_ID:
+		return "G_SESSION_ID";
+	case NX549J_CAMERA_CAM_PRIV_BASE:
+		return "CAM_PRIV_PARM";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 1:
+		return "CAM_PRIV_DO_AUTO_FOCUS";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 2:
+		return "CAM_PRIV_CANCEL_AUTO_FOCUS";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 3:
+		return "CAM_PRIV_PREPARE_SNAPSHOT";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 4:
+		return "CAM_PRIV_STREAM_INFO_SYNC";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 5:
+		return "CAM_PRIV_STREAM_PARM";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 6:
+		return "CAM_PRIV_START_ZSL_SNAPSHOT";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 7:
+		return "CAM_PRIV_STOP_ZSL_SNAPSHOT";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 8:
+		return "CAM_PRIV_SYNC_RELATED_SENSORS";
+	case NX549J_CAMERA_CAM_PRIV_BASE + 9:
+		return "CAM_PRIV_FLUSH";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static const char *nx549j_camera_status_name(unsigned int status)
+{
+	switch (status) {
+	case 0:
+		return "ZERO";
+	case MSM_CAMERA_CMD_SUCESS:
+		return "CMD_SUCCESS";
+	case MSM_CAMERA_BUF_MAP_SUCESS:
+		return "BUF_MAP_SUCCESS";
+	case MSM_CAMERA_ERR_CMD_FAIL:
+		return "ERR_CMD_FAIL";
+	case MSM_CAMERA_ERR_MAPPING:
+		return "ERR_MAPPING";
+	case MSM_CAMERA_ERR_DEVICE_BUSY:
+		return "ERR_DEVICE_BUSY";
+	case MSM_CAMERA_STATUS_FAIL:
+		return "STATUS_FAIL";
+	case MSM_CAMERA_STATUS_SUCCESS:
+		return "STATUS_SUCCESS";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 static void camera_pack_event(struct file *filep, int evt_id,
 	int command, int value, struct v4l2_event *event)
 {
@@ -53,6 +136,7 @@ static void camera_pack_event(struct file *filep, int evt_id,
 	struct msm_video_device *pvdev = video_drvdata(filep);
 	struct camera_v4l2_private *sp = fh_to_private(filep->private_data);
 
+	memset(event, 0, sizeof(*event));
 	/* always MSM_CAMERA_V4L2_EVENT_TYPE */
 	event->type = MSM_CAMERA_V4L2_EVENT_TYPE;
 	event->id = evt_id;
@@ -66,6 +150,15 @@ static int camera_check_event_status(struct v4l2_event *event)
 {
 	struct msm_v4l2_event_data *event_data =
 		(struct msm_v4l2_event_data *)&event->u.data[0];
+
+	pr_err("NX549J camera diag: check_status event_id=%u cmd=%u/%s session=%u stream=%u status=0x%x/%s ret=%u notify=%u arg=%d\n",
+		event->id, event_data->command,
+		nx549j_camera_priv_command_name(event_data->command),
+		event_data->session_id, event_data->stream_id,
+		event_data->status,
+		nx549j_camera_status_name(event_data->status),
+		event_data->ret_value, event_data->notify,
+		event_data->arg_value);
 
 	if (event_data->status > MSM_CAMERA_ERR_EVT_BASE) {
 		pr_err("%s : event_data status out of bounds\n",
@@ -292,24 +385,59 @@ static int camera_v4l2_streamon(struct file *filep, void *fh,
 	enum v4l2_buf_type buf_type)
 {
 	struct v4l2_event event;
+	struct msm_v4l2_event_data *event_data;
+	struct msm_video_device *pvdev = video_drvdata(filep);
 	int rc;
 	struct camera_v4l2_private *sp = fh_to_private(fh);
+
+	pr_err("NX549J camera diag: v4l2_streamon enter session=%d stream=%u buf_type=%u vb2_valid=%u stream_created=%u daemon=%d\n",
+		pvdev && pvdev->vdev ? pvdev->vdev->num : -1,
+		sp->stream_id, buf_type, sp->is_vb2_valid,
+		sp->stream_created, msm_is_daemon_present());
 
 	mutex_lock(&sp->lock);
 	rc = vb2_streamon(&sp->vb2_q, buf_type);
 	mutex_unlock(&sp->lock);
 
+	pr_err("NX549J camera diag: v4l2_streamon vb2_done session=%d stream=%u buf_type=%u rc=%d daemon=%d\n",
+		pvdev && pvdev->vdev ? pvdev->vdev->num : -1,
+		sp->stream_id, buf_type, rc, msm_is_daemon_present());
+
 	if (msm_is_daemon_present() == false)
 		return 0;
 
+	pr_err("NX549J camera diag: STREAM_ON arg isolation LEGACY session=%d stream=%u arg -1 -> 0\n",
+		pvdev && pvdev->vdev ? pvdev->vdev->num : -1,
+		sp->stream_id);
 	camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-		MSM_CAMERA_PRIV_STREAM_ON, -1, &event);
+		MSM_CAMERA_PRIV_STREAM_ON, 0, &event);
+	event_data = (struct msm_v4l2_event_data *)&event.u.data[0];
+
+	pr_err("NX549J camera diag: v4l2_streamon post request session=%u stream=%u cmd=%u/%s arg=%d\n",
+		event_data->session_id, event_data->stream_id,
+		event_data->command,
+		nx549j_camera_priv_command_name(event_data->command),
+		event_data->arg_value);
 
 	rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
-	if (rc < 0)
+	if (rc < 0) {
+		pr_err("NX549J camera diag: v4l2_streamon post failed session=%u stream=%u rc=%d\n",
+			event_data->session_id, event_data->stream_id, rc);
 		return rc;
+	}
+
+	event_data = (struct msm_v4l2_event_data *)&event.u.data[0];
+	pr_err("NX549J camera diag: v4l2_streamon ack session=%u stream=%u cmd=%u/%s status=0x%x/%s ret=%u notify=%u\n",
+		event_data->session_id, event_data->stream_id,
+		event_data->command,
+		nx549j_camera_priv_command_name(event_data->command),
+		event_data->status,
+		nx549j_camera_status_name(event_data->status),
+		event_data->ret_value, event_data->notify);
 
 	rc = camera_check_event_status(&event);
+	pr_err("NX549J camera diag: v4l2_streamon exit session=%u stream=%u rc=%d\n",
+		event_data->session_id, event_data->stream_id, rc);
 	return rc;
 }
 
@@ -366,6 +494,7 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 	int i = 0;
 	struct v4l2_event event;
 	struct camera_v4l2_private *sp = fh_to_private(fh);
+	struct msm_video_device *pvdev = video_drvdata(filep);
 	struct msm_v4l2_format_data *user_fmt;
 
 	if (pfmt->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -390,16 +519,19 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 			mutex_unlock(sp->vb2_q.lock);
 			goto done;
 		}
-		for (i = 0; i < user_fmt->num_planes; i++)
-			pr_debug("%s: plane size[%d]\n", __func__,
-					user_fmt->plane_sizes[i]);
-		mutex_unlock(sp->vb2_q.lock);
-		if (msm_is_daemon_present() != false) {
-			camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-				MSM_CAMERA_PRIV_S_FMT, -1, &event);
+			for (i = 0; i < user_fmt->num_planes; i++)
+				pr_debug("%s: plane size[%d]\n", __func__,
+						user_fmt->plane_sizes[i]);
+			mutex_unlock(sp->vb2_q.lock);
+			if (msm_is_daemon_present() != false) {
+				pr_err("NX549J camera diag: S_FMT arg isolation LEGACY session=%u stream=%u arg -1 -> 0\n",
+					pvdev && pvdev->vdev ? pvdev->vdev->num : 0,
+					sp->stream_id);
+				camera_pack_event(filep, MSM_CAMERA_SET_PARM,
+					MSM_CAMERA_PRIV_S_FMT, 0, &event);
 
-			rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
-			if (rc < 0)
+				rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+				if (rc < 0)
 				goto done;
 			rc = camera_check_event_status(&event);
 			if (rc < 0)
@@ -655,6 +787,10 @@ static int camera_v4l2_open(struct file *filep)
 
 	opn_idx = atomic_read(&pvdev->opened);
 	idx = opn_idx;
+	pr_err("NX549J camera diag: v4l2_open begin session=%u opened=0x%lx stream=%u daemon=%d\n",
+		pvdev->vdev->num, opn_idx,
+		fh_to_private(filep->private_data)->stream_id,
+		msm_is_daemon_present());
 	/* every stream has a vb2 queue */
 	rc = camera_v4l2_vb2_q_init(filep);
 	if (rc < 0) {
@@ -692,8 +828,10 @@ static int camera_v4l2_open(struct file *filep)
 				0, -1, &event);
 			rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 			if (rc < 0) {
-				pr_err("%s : NEW_SESSION event failed,rc %d\n",
-					__func__, rc);
+				pr_err("NX549J camera diag: v4l2_open NEW_SESSION failed session=%u stream=%u rc=%d opened=0x%lx\n",
+					pvdev->vdev->num,
+					fh_to_private(filep->private_data)->stream_id,
+					rc, atomic_read(&pvdev->opened));
 				goto post_fail;
 			}
 
@@ -716,6 +854,9 @@ static int camera_v4l2_open(struct file *filep)
 	idx |= (1 << find_first_zero_bit((const unsigned long *)&opn_idx,
 				MSM_CAMERA_STREAM_CNT_BITS));
 	atomic_cmpxchg(&pvdev->opened, opn_idx, idx);
+	pr_err("NX549J camera diag: v4l2_open done session=%u old_opened=0x%lx new_opened=0x%lx stream=%u rc=%d\n",
+		pvdev->vdev->num, opn_idx, idx,
+		fh_to_private(filep->private_data)->stream_id, rc);
 	mutex_unlock(&pvdev->video_drvdata_mutex);
 
 	return rc;
@@ -758,6 +899,7 @@ static int camera_v4l2_close(struct file *filep)
 	struct camera_v4l2_private *sp = fh_to_private(filep->private_data);
 	unsigned int opn_idx, mask;
 	struct msm_session *session;
+	int rc = 0;
 	BUG_ON(!pvdev);
 	session = msm_session_find(pvdev->vdev->num);
 	if (WARN_ON(!session))
@@ -767,6 +909,10 @@ static int camera_v4l2_close(struct file *filep)
 	mutex_lock(&session->close_lock);
 	opn_idx = atomic_read(&pvdev->opened);
 	mask = (1 << sp->stream_id);
+	pr_err("NX549J camera diag: v4l2_close begin session=%u stream=%u opened=0x%x mask=0x%x created=%u vb2_valid=%u daemon=%d\n",
+		pvdev->vdev->num, sp->stream_id, opn_idx, mask,
+		sp->stream_created, sp->is_vb2_valid,
+		msm_is_daemon_present());
 	opn_idx &= ~mask;
 	atomic_set(&pvdev->opened, opn_idx);
 
@@ -774,7 +920,9 @@ static int camera_v4l2_close(struct file *filep)
 		pr_debug("%s: close stream_id=%d\n", __func__, sp->stream_id);
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
 			MSM_CAMERA_PRIV_DEL_STREAM, -1, &event);
-		msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+		pr_err("NX549J camera diag: v4l2_close DEL_STREAM session=%u stream=%u rc=%d\n",
+			pvdev->vdev->num, sp->stream_id, rc);
 	}
 
 	if (sp->stream_created == true)
@@ -784,7 +932,9 @@ static int camera_v4l2_close(struct file *filep)
 		if (msm_is_daemon_present() != false) {
 			camera_pack_event(filep, MSM_CAMERA_DEL_SESSION,
 				0, -1, &event);
-			msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+			rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
+			pr_err("NX549J camera diag: v4l2_close DEL_SESSION session=%u stream=%u rc=%d\n",
+				pvdev->vdev->num, sp->stream_id, rc);
 		}
 		msm_delete_command_ack_q(pvdev->vdev->num, 0);
 		msm_delete_stream(pvdev->vdev->num, sp->stream_id);
@@ -804,6 +954,9 @@ static int camera_v4l2_close(struct file *filep)
 		mutex_unlock(&session->close_lock);
 	}
 
+	pr_err("NX549J camera diag: v4l2_close done session=%u stream=%u opened=0x%x\n",
+		pvdev->vdev->num, sp->stream_id,
+		atomic_read(&pvdev->opened));
 	camera_v4l2_fh_release(filep);
 	mutex_unlock(&pvdev->video_drvdata_mutex);
 

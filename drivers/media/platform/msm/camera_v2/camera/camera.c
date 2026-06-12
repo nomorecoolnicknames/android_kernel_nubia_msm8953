@@ -394,8 +394,10 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 					user_fmt->plane_sizes[i]);
 		mutex_unlock(sp->vb2_q.lock);
 		if (msm_is_daemon_present() != false) {
+			pr_err("NX549J camera diag: S_FMT arg isolation session=%u stream=%u arg -1 -> 0\n",
+				sp->session_id, sp->stream_id);
 			camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-				MSM_CAMERA_PRIV_S_FMT, -1, &event);
+				MSM_CAMERA_PRIV_S_FMT, 0, &event);
 
 			rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 			if (rc < 0)
