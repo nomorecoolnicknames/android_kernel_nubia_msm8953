@@ -653,7 +653,13 @@ int q6core_get_avcs_api_version_per_service(uint32_t service_id)
 
         ret = q6core_get_avcs_fwk_version();
         if (ret < 0) {
-                pr_err("%s: failure in getting AVCS version\n", __func__);
+                /*
+                 * NX549J: expected on stock Nubia ADSP firmware without
+                 * AVCS_CMD_GET_FWK_VERSION; ratelimit to keep the log ring
+                 * usable (this fired in triples every ~19s).
+                 */
+                pr_err_ratelimited("%s: failure in getting AVCS version\n",
+                                   __func__);
                 return ret;
         }
 

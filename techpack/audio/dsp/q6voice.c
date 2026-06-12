@@ -4405,10 +4405,16 @@ static int voice_setup_vocproc(struct voice_data *v)
 				     APRV2_IDS_SERVICE_ID_ADSP_CVP_V);
 
 	if (common.cvp_version < 0) {
-		pr_err("%s: Invalid CVP version %d\n",
-		       __func__, common.cvp_version);
-		ret = -EINVAL;
-		goto fail;
+		/*
+		 * NX549J: stock Nubia ADSP firmware predates
+		 * AVCS_CMD_GET_FWK_VERSION, so the CVP version query fails
+		 * with -EOPNOTSUPP (-95). Treat that as legacy CVP version 0
+		 * (pre-CVP_VERSION_2 command set) instead of failing the
+		 * whole vocproc setup, which left CS calls with no audio.
+		 */
+		pr_warn("%s: NX549J: CVP version query failed %d, assuming legacy CVP version 0\n",
+			__func__, common.cvp_version);
+		common.cvp_version = 0;
 	}
 	pr_debug("%s: CVP Version %d\n", __func__, common.cvp_version);
 
