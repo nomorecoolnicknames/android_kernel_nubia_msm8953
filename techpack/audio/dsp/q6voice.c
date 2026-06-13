@@ -4423,9 +4423,9 @@ static int voice_setup_vocproc(struct voice_data *v)
 		 * call. Clamp to CVP_VERSION_2 so the v2 config commands the
 		 * ADSP expects are sent.
 		 */
-		pr_warn("%s: NX549J: CVP version query failed %d, forcing CVP_VERSION_2 (ADSP is cvd 2.2)\n",
+		pr_warn("%s: NX549J: CVP version query failed %d, using legacy version 0 (matches working 3.18 device_channels path)\n",
 			__func__, common.cvp_version);
-		common.cvp_version = CVP_VERSION_2;
+		common.cvp_version = 0;
 	}
 	pr_err("%s: NX549J vocdiag: CVP Version %d cvd_ver='%s'\n", __func__,
 		common.cvp_version, common.cvd_version);
