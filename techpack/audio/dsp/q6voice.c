@@ -4395,6 +4395,11 @@ static int voice_setup_vocproc(struct voice_data *v)
 	int ret = 0;
 
 	ret = voice_send_cvp_create_cmd(v);
+	pr_err("%s: NX549J vocdiag: cvp_create ret=%d rx_port=0x%x tx_port=0x%x rx_dev=%d tx_dev=%d rx_ch=%d tx_ch=%d topo_rx=0x%x topo_tx=0x%x\n",
+		__func__, ret, v->dev_rx.port_id, v->dev_tx.port_id,
+		v->dev_rx.dev_id, v->dev_tx.dev_id,
+		v->dev_rx.no_of_channels, v->dev_tx.no_of_channels,
+		common.mvs_info.media_type, common.cvd_version[0]);
 	if (ret < 0) {
 		pr_err("%s: CVP create failed err:%d\n", __func__, ret);
 		goto fail;
@@ -4406,19 +4411,27 @@ static int voice_setup_vocproc(struct voice_data *v)
 
 	if (common.cvp_version < 0) {
 		/*
-		 * NX549J: stock Nubia ADSP firmware predates
-		 * AVCS_CMD_GET_FWK_VERSION, so the CVP version query fails
-		 * with -EOPNOTSUPP (-95). Treat that as legacy CVP version 0
-		 * (pre-CVP_VERSION_2 command set) instead of failing the
-		 * whole vocproc setup, which left CS calls with no audio.
+		 * NX549J: the stock Nubia ADSP (ADSP.8953.2.8.2) does NOT answer
+		 * the per-service AVCS_CMD_GET_FWK_VERSION query the 4.9 q6voice
+		 * issues, so voice_get_avcs_version_per_service() returns
+		 * -EOPNOTSUPP (-95). It is NOT actually a legacy pre-v2 ADSP:
+		 * the MVM CVD version reads back "2.2" (cvd_ver), i.e. it
+		 * implements the CVP_VERSION_2 command set (media-format /
+		 * device-channels / channel-mixer / MFC). Clamping to 0 made
+		 * q6voice SKIP those v2 vocproc-config commands, so vocproc
+		 * reached VOC_RUN but with no/!wrong media format -> silent
+		 * call. Clamp to CVP_VERSION_2 so the v2 config commands the
+		 * ADSP expects are sent.
 		 */
-		pr_warn("%s: NX549J: CVP version query failed %d, assuming legacy CVP version 0\n",
+		pr_warn("%s: NX549J: CVP version query failed %d, forcing CVP_VERSION_2 (ADSP is cvd 2.2)\n",
 			__func__, common.cvp_version);
-		common.cvp_version = 0;
+		common.cvp_version = CVP_VERSION_2;
 	}
-	pr_debug("%s: CVP Version %d\n", __func__, common.cvp_version);
+	pr_err("%s: NX549J vocdiag: CVP Version %d cvd_ver='%s'\n", __func__,
+		common.cvp_version, common.cvd_version);
 
 	ret = voice_send_cvp_media_fmt_info_cmd(v);
+	pr_err("%s: NX549J vocdiag: media_fmt_info ret=%d\n", __func__, ret);
 	if (ret < 0) {
 		pr_err("%s: Set media format info failed err:%d\n", __func__,
 		       ret);
@@ -4426,6 +4439,7 @@ static int voice_setup_vocproc(struct voice_data *v)
 	}
 
 	ret = voice_send_cvp_topology_commit_cmd(v);
+	pr_err("%s: NX549J vocdiag: topology_commit ret=%d\n", __func__, ret);
 	if (ret < 0) {
 		pr_err("%s: Set topology commit failed err:%d\n",
 		       __func__, ret);
@@ -4448,11 +4462,13 @@ static int voice_setup_vocproc(struct voice_data *v)
 
 	/* enable vocproc */
 	ret = voice_send_enable_vocproc_cmd(v);
+	pr_err("%s: NX549J vocdiag: enable_vocproc ret=%d\n", __func__, ret);
 	if (ret < 0)
 		goto fail;
 
 	/* attach vocproc */
 	ret = voice_send_attach_vocproc_cmd(v);
+	pr_err("%s: NX549J vocdiag: attach_vocproc ret=%d\n", __func__, ret);
 	if (ret < 0)
 		goto fail;
 
@@ -7292,6 +7308,7 @@ int voc_start_voice_call(uint32_t session_id)
 			goto fail;
 		}
 		ret = voice_setup_vocproc(v);
+		pr_err("%s: NX549J vocdiag: setup_vocproc ret=%d\n", __func__, ret);
 		if (ret < 0) {
 			pr_err("setup voice failed\n");
 			goto fail;
@@ -7309,6 +7326,8 @@ int voc_start_voice_call(uint32_t session_id)
 			pr_err("voice mute failed\n");
 
 		ret = voice_send_start_voice_cmd(v);
+		pr_err("%s: NX549J vocdiag: start_voice ret=%d -> voc_state=VOC_RUN\n",
+			__func__, ret);
 		if (ret < 0) {
 			pr_err("start voice failed\n");
 			goto fail;
