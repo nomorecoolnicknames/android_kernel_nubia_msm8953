@@ -530,9 +530,19 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 				FORMAT_LINEAR_PCM,
 				bits_per_sample, false, ENC_CFG_ID_NONE);
 		else
-			ret = q6asm_open_read_v4(prtd->audio_client,
+			/*
+			 * NX549J: the stock 2016 Nubia ADSP (ADSP.8953.2.8.2)
+			 * does not answer the AVCS version query (-95), so this
+			 * else branch is taken; it sent the V4 PCM media format,
+			 * which the stock ADSP REJECTS on OPEN_READ with
+			 * ADSP_EFAILED -> q6asm_open_read fails -> pcm_prepare -1
+			 * -> dead mic on every recording. Use the V2 PCM media
+			 * format the stock ADSP supports (mirrors the playback
+			 * v2 fallback in msm_pcm_playback_prepare).
+			 */
+			ret = q6asm_open_read_v2(prtd->audio_client,
 				FORMAT_LINEAR_PCM,
-				bits_per_sample, false);
+				bits_per_sample);
 		if (ret < 0) {
 			pr_err("%s: q6asm_open_read failed\n", __func__);
 			q6asm_audio_client_free(prtd->audio_client);
