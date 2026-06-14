@@ -148,12 +148,27 @@
 		"RX_BIAS", "MCLK",
 		"SPK_RX_BIAS", "MCLK",
 		"INT_LDO_H", "MCLK",
+		/* NX549J mic fix: this override REPLACES the base msm8953-audio.dtsi
+		 * int_codec routing (DT property = full replace, not merge) and had
+		 * dropped the I2S clock + analog->digital ADC capture bridges below,
+		 * severing every mic at the analog->digital boundary (dead mic in
+		 * recording AND in-call; downlink survived via RX AIF-stream auto-bridge).
+		 * Restored RX/TX_I2S_CLK + ADCx_IN/OUT + PDM_IN/OUT_RXn to match base.
+		 * See NX549J_MIC_DEBUG_20260613.md. */
+		"RX_I2S_CLK", "MCLK",
+		"TX_I2S_CLK", "MCLK",
 		"MIC BIAS External", "Handset Mic",
 		"MIC BIAS External2", "Headset Mic",
 		"MIC BIAS External", "Secondary Mic",
 		"AMIC1", "MIC BIAS External",
 		"AMIC2", "MIC BIAS External2",
 		"AMIC3", "MIC BIAS External",
+		"ADC1_IN", "ADC1_OUT",
+		"ADC2_IN", "ADC2_OUT",
+		"ADC3_IN", "ADC3_OUT",
+		"PDM_IN_RX1", "PDM_OUT_RX1",
+		"PDM_IN_RX2", "PDM_OUT_RX2",
+		"PDM_IN_RX3", "PDM_OUT_RX3",
 		"DMIC1", "MIC BIAS Internal1",
 		"MIC BIAS Internal1", "Digital Mic1",
 		"DMIC2", "MIC BIAS Internal1",
