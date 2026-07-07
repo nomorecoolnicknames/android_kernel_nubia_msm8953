@@ -383,6 +383,11 @@ static bool nx549j_aw8736_ext_spk_power_amp_on(int gpio, int value)
 	if (curr != value) {
 		latch = value;
 		if (value) {
+			/* NX549J: let the codec speaker DAC output settle before
+			 * enabling the AW8736 gain-pulse sequence. Enabling the ext PA
+			 * into an un-settled DC level is the route-transition click
+			 * source (the Ext-Spk DAPM path, unlike EAR PA, had no delay). */
+			usleep_range(8000, 10000);
 			for (count = 0; count < nx549j_ext_pa_power_ctrl; count++) {
 				gpio_direction_output(gpio, latch);
 				latch = !latch;
