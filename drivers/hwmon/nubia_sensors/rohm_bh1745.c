@@ -100,7 +100,15 @@ enum tp_color_id{
 	TP_COLOR_NUMBER,
 };
 
-static dev_t const bh1745_rgb_dev_t     = MKDEV(MISC_MAJOR, 102);
+/*
+ * Use devt=0 so device_create() makes a pure sysfs class device with NO
+ * char-device node. The stock code created a raw char node at
+ * MKDEV(MISC_MAJOR/10, 102) that no cdev backs and that collides with the misc
+ * subsystem's ownership of major 10 in the char-device kobj_map / devtmpfs.
+ * The light sensor is driven purely through its sysfs class attributes, so no
+ * char node is needed. See txc_pa224.c for the shared-bug rationale.
+ */
+static dev_t const bh1745_rgb_dev_t     = 0;
 static struct class         *rgb_class;
 
 struct rgbc_parameter{

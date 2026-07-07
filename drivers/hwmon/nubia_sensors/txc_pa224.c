@@ -140,7 +140,18 @@ u8 ps_seq_oil[ps_ary_size];
 u8 ps_seq_near[ps_ary_size];
 static int oil_occurred = 0;
 
-static dev_t const pa224_proximity_dev_t = MKDEV(MISC_MAJOR, 101);
+/*
+ * Use devt=0 so device_create() makes a pure sysfs class device with NO
+ * char-device node. The stock code created a raw char node at
+ * MKDEV(MISC_MAJOR/10, 101) that no cdev backs (opening it only ever returns
+ * -ENODEV via misc_open) and that collides with the misc subsystem's ownership
+ * of major 10 in the char-device kobj_map / devtmpfs. This is the only
+ * tree-unique, kernel-state-touching op both nubia sensor drivers share at
+ * probe; neutralising it is the leading mitigation for the silent probe-time
+ * corruption that kills init. The driver's real char interface is the separate
+ * misc device "ps_dev"; the class device only needs its sysfs attributes.
+ */
+static dev_t const pa224_proximity_dev_t = 0;
 static struct class         *proximity_class;
 #ifdef SENSORS_CLASS_DEV
 static struct sensors_classdev sensors_proximity_cdev = {

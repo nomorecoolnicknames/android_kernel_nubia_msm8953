@@ -187,6 +187,22 @@
 		reg = <0x38>;
 		vdd-supply = <&pm8953_l10>;
 		vio-supply = <&pm8953_l5>;
+		/* Calibration required by rgb_bh1745 sensor_parse_dt(); copied
+		 * verbatim from stock ztemt NX549J DTS (NX549/msm8953-mtp.dtsi).
+		 * Absence made probe fail at "Unable to read ga_a_value". */
+		bh1745,tp_moudle_count = <3>;
+		/*[module_id] [golden judge] r[0] r[1] g[0] g[1] b[0] b[1]*/
+		bh1745,cal_data0 = "0","198","495","1179","127","215","0","0",
+		/*[white judge] r[0] r[1] g[0] g[1] b[0] b[1]*/
+		"194","155","73","558","541","0","0",
+		/*[balck judge] r[0] r[1] g[0] g[1] b[0] b[1]*/
+		"1060","395","260","1884","2740","0","0";
+		bh1745,cal_data1 = "1","242","1565","932","9035","8607","0","0",
+		"189","146","88","598","533","0","0",
+		"1040","1911","310","11509","9976","0","0";
+		bh1745,cal_data2 = "2","199","488","274","2283","2068","0","0",
+		"194","216","113","886","821","0","0",
+		"396","2301","547","13243","12687","0","0";
 	};
 
 	txc_pa224@1e {
