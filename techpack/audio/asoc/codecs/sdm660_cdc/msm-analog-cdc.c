@@ -3290,7 +3290,17 @@ static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		dev_dbg(codec->dev,
-			"%s: enable external speaker PA\n", __func__);
+			"%s: disable external speaker PA\n", __func__);
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		/* NX549J: DAPM tears the Ext-Spk sink widget down before the
+		 * upstream RX3 speaker DAC mutes, so the AW8736 EN was being
+		 * pulled low while RX3 still drove signal -> audible power-down
+		 * click on the loudspeaker at end-of-playback. Mute RX3 first and
+		 * let it settle BEFORE cutting the external PA. */
+		msm_anlg_cdc_dig_notifier_call(codec,
+				       DIG_CDC_EVENT_RX3_MUTE_ON);
+		usleep_range(8000, 10000);
+#endif
 		if (sdm660_cdc->codec_spk_ext_pa_cb)
 			sdm660_cdc->codec_spk_ext_pa_cb(codec, 0);
 		break;
