@@ -3272,6 +3272,23 @@ static int msm_anlg_cdc_codec_enable_lo_pa(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+#ifdef CONFIG_MACH_NUBIA_NX549J
+/*
+ * NX549J end-of-playback loudspeaker-click diagnostic.
+ * When set (default), the AW8736 external speaker PA is NOT powered down on
+ * the DAPM teardown, i.e. its EN edge is removed from the standby sequence.
+ * Runtime-togglable via /sys/module/.../parameters/nx549j_ext_pa_keepon to
+ * A/B whether the click is the AW8736 EN transition itself or an upstream
+ * LINEOUT-PA/DAC analog transient, without reflashing. The click is
+ * volume-INDEPENDENT and was absent on A9 (same aw8736 handling), so the
+ * culprit is a power-domain transient, not the audio signal.
+ */
+static int nx549j_ext_pa_keepon = 1;
+module_param(nx549j_ext_pa_keepon, int, 0644);
+MODULE_PARM_DESC(nx549j_ext_pa_keepon,
+	"NX549J: keep AW8736 ext-PA enabled across DAPM power-down (click diag)");
+#endif
+
 static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 						struct snd_kcontrol *kcontrol,
 						int event)
@@ -3285,12 +3302,21 @@ static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_POST_PMU:
 		dev_dbg(codec->dev,
 			"%s: enable external speaker PA\n", __func__);
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		pr_info("nx549j-spkclick: ext-PA POST_PMU enable\n");
+#endif
 		if (sdm660_cdc->codec_spk_ext_pa_cb)
 			sdm660_cdc->codec_spk_ext_pa_cb(codec, 1);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		dev_dbg(codec->dev,
 			"%s: disable external speaker PA\n", __func__);
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		pr_info("nx549j-spkclick: ext-PA PRE_PMD disable keepon=%d\n",
+			nx549j_ext_pa_keepon);
+		if (nx549j_ext_pa_keepon)
+			break;
+#endif
 		if (sdm660_cdc->codec_spk_ext_pa_cb)
 			sdm660_cdc->codec_spk_ext_pa_cb(codec, 0);
 		break;
