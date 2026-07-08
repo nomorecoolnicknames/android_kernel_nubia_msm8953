@@ -274,7 +274,16 @@
 			config {
 				pins = "gpio48";
 				drive-strength = <16>;
-				bias-disable;
+				/*
+				 * NX549J: GF3208 INT is a rising-edge / active-high
+				 * IRQ. With bias-disable the line floats while the
+				 * sensor is in sleep, producing spurious rising edges
+				 * ("INT in Sleep mode" / "#### Invalid int" in the
+				 * userspace stack) that abort gx_fpd init before it
+				 * registers the FingerPrint service. Pull it down so it
+				 * rests at 0 and only the sensor's real assert triggers.
+				 */
+				bias-pull-down;
 			};
 		};
 		gf_int_suspend: gf_int_suspend {
