@@ -419,6 +419,10 @@ static int msm_isp_get_buf_by_index(struct msm_isp_buf_mgr *buf_mgr,
 
 	spin_lock_irqsave(&bufq->bufq_lock, flags);
 	if (buf_index >= bufq->num_bufs) {
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		pr_err_ratelimited("NX549J bufidx: OUT-OF-RANGE bufq=0x%x stream=0x%x buf_index=%d num_bufs=%d\n",
+			bufq_handle, bufq->stream_id, buf_index, bufq->num_bufs);
+#endif
 		pr_err("%s: Invalid buf index: %d max: %d\n", __func__,
 			buf_index, bufq->num_bufs);
 		spin_unlock_irqrestore(&bufq->bufq_lock, flags);
@@ -426,7 +430,12 @@ static int msm_isp_get_buf_by_index(struct msm_isp_buf_mgr *buf_mgr,
 	}
 
 	*buf_info = NULL;
-	for (i = 0; bufq->num_bufs; i++) {
+	/*
+	 * NX549J: fix unbounded loop condition (was `bufq->num_bufs`, a
+	 * constant, causing an OOB read past bufs[] when no entry matches
+	 * buf_index) -> bound it to i < num_bufs.
+	 */
+	for (i = 0; i < bufq->num_bufs; i++) {
 		temp_buf_info = &bufq->bufs[i];
 		if (temp_buf_info && temp_buf_info->buf_idx == buf_index) {
 			*buf_info = temp_buf_info;
@@ -437,6 +446,12 @@ static int msm_isp_get_buf_by_index(struct msm_isp_buf_mgr *buf_mgr,
 	if (*buf_info) {
 		pr_debug("Found buf in isp buf mgr");
 		rc = 0;
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	} else {
+		pr_err_ratelimited("NX549J bufidx: NOT-FOUND bufq=0x%x stream=0x%x buf_index=%d num_bufs=%d first_buf_idx=%d\n",
+			bufq_handle, bufq->stream_id, buf_index,
+			bufq->num_bufs, bufq->num_bufs ? bufq->bufs[0].buf_idx : -1);
+#endif
 	}
 	spin_unlock_irqrestore(&bufq->bufq_lock, flags);
 	return rc;
