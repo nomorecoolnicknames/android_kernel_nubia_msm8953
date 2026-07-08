@@ -71,6 +71,33 @@
 #define MAX_BOOST_VOLTAGE 5550
 #define BOOST_VOLTAGE_STEP 50
 
+#ifdef CONFIG_MACH_NUBIA_NX549J
+/*
+ * End-of-playback loudspeaker click localization (see NX549J remediation
+ * plan). Per-stage teardown delays in ms, all default 0 (off). Set exactly
+ * ONE to ~1000 via /sys/module/analog_cdc_dlkm/parameters/<name> and listen:
+ * if the click moves out by the same amount, its source executes AFTER the
+ * delayed point in the DAPM down-sequence; otherwise BEFORE it.
+ * Order: ext_spk (first torn down) -> lo_pa -> lo_dac -> rx_bias (last).
+ */
+static int nx549j_dly_ext_spk_pmd;
+static int nx549j_dly_lo_pa_pmd;
+static int nx549j_dly_lo_dac_pmd;
+static int nx549j_dly_rx_bias_pmd;
+module_param(nx549j_dly_ext_spk_pmd, int, 0644);
+module_param(nx549j_dly_lo_pa_pmd, int, 0644);
+module_param(nx549j_dly_lo_dac_pmd, int, 0644);
+module_param(nx549j_dly_rx_bias_pmd, int, 0644);
+
+static inline void nx549j_click_dly(const char *tag, int ms)
+{
+	if (ms) {
+		pr_info("nx549j-spkclick: %s delay %dms\n", tag, ms);
+		msleep(ms);
+	}
+}
+#endif
+
 #define SDM660_CDC_MBHC_BTN_COARSE_ADJ  100 /* in mV */
 #define SDM660_CDC_MBHC_BTN_FINE_ADJ 12 /* in mV */
 
@@ -2662,6 +2689,9 @@ static int msm_anlg_cdc_codec_enable_rx_bias(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		nx549j_click_dly("rx_bias_pmd", nx549j_dly_rx_bias_pmd);
+#endif
 		sdm660_cdc->rx_bias_count--;
 		if (sdm660_cdc->rx_bias_count == 0) {
 			snd_soc_update_bits(codec,
@@ -2877,6 +2907,9 @@ static int msm_anlg_cdc_lo_dac_event(struct snd_soc_dapm_widget *w,
 			MSM89XX_PMIC_ANALOG_RX_LO_DAC_CTL, 0x08, 0x00);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		nx549j_click_dly("lo_dac_pmd", nx549j_dly_lo_dac_pmd);
+#endif
 		/* Wait for 20ms before powerdown of lineout_dac */
 		usleep_range(20000, 20100);
 		snd_soc_update_bits(codec,
@@ -3274,6 +3307,9 @@ static int msm_anlg_cdc_codec_enable_lo_pa(struct snd_soc_dapm_widget *w,
 				       DIG_CDC_EVENT_RX3_MUTE_OFF);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		nx549j_click_dly("lo_pa_pmd", nx549j_dly_lo_pa_pmd);
+#endif
 		msm_anlg_cdc_dig_notifier_call(codec,
 				       DIG_CDC_EVENT_RX3_MUTE_ON);
 		break;
@@ -3328,6 +3364,7 @@ static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 #ifdef CONFIG_MACH_NUBIA_NX549J
 		pr_info("nx549j-spkclick: ext-PA PRE_PMD disable keepon=%d\n",
 			nx549j_ext_pa_keepon);
+		nx549j_click_dly("ext_spk_pmd", nx549j_dly_ext_spk_pmd);
 		if (nx549j_ext_pa_keepon)
 			break;
 #endif
