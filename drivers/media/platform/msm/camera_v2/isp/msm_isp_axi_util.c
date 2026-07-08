@@ -21,6 +21,23 @@
 #define HANDLE_TO_IDX(handle) (handle & 0xFF)
 #define ISP_SOF_DEBUG_COUNT 0
 
+#ifdef CONFIG_MACH_NUBIA_NX549J
+/*
+ * NX549J black-preview frame-flow trace. On fresh boot the preview VFE
+ * stream configures AXI (start_axi rc=0, camif_state=1) but never emits a
+ * buf_done and the screen is black. This knob logs (ratelimited) two things:
+ *  - frame arrival at VFE (increment_frame_id) -> did CSID/CSIPHY deliver a
+ *    frame to the pixel path at all;
+ *  - AXI/WM completion IRQ (process_axi_irq) with comp/wm masks -> did a
+ *    write-master finish a buffer (the buf_done precursor).
+ * SOF but no AXI-IRQ => WM/ping-pong not completing (buffer/divert issue);
+ * no SOF => frames never reach VFE. Runtime-togglable, default on for the
+ * diag build.
+ */
+static int nx549j_vfe_ftrace = 1;
+module_param(nx549j_vfe_ftrace, int, 0644);
+#endif
+
 #ifdef CONFIG_MSM_AVTIMER
 static struct avtimer_fptr_t avtimer_func;
 #endif
@@ -884,6 +901,12 @@ void msm_isp_increment_frame_id(struct vfe_device *vfe_dev,
 	struct master_slave_resource_info *ms_res =
 				&vfe_dev->common_data->ms_resource;
 
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	if (nx549j_vfe_ftrace)
+		pr_err_ratelimited("NX549J vfeftrace: frame-arrive vfe=%d src=%d frame_id=%u\n",
+			vfe_dev->pdev->id, frame_src,
+			vfe_dev->axi_data.src_info[frame_src].frame_id);
+#endif
 	spin_lock_irqsave(&vfe_dev->common_data->common_dev_data_lock, flags);
 	dual_hw_type =
 		vfe_dev->axi_data.src_info[frame_src].dual_hw_type;
@@ -4386,6 +4409,12 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 		get_comp_mask(irq_status0, irq_status1);
 	wm_mask = vfe_dev->hw_info->vfe_ops.axi_ops.
 		get_wm_mask(irq_status0, irq_status1);
+#ifdef CONFIG_MACH_NUBIA_NX549J
+	if (nx549j_vfe_ftrace)
+		pr_err_ratelimited("NX549J vfeftrace: axi-irq vfe=%d comp_mask=0x%x wm_mask=0x%x irq0=0x%x irq1=0x%x\n",
+			vfe_dev->pdev->id, comp_mask, wm_mask,
+			irq_status0, irq_status1);
+#endif
 	if (!(comp_mask || wm_mask))
 		return;
 
