@@ -2856,7 +2856,17 @@ static int msm_anlg_cdc_lo_dac_event(struct snd_soc_dapm_widget *w,
 			MSM89XX_PMIC_ANALOG_RX_LO_DAC_CTL, 0x08, 0x08);
 		snd_soc_update_bits(codec,
 			MSM89XX_PMIC_ANALOG_RX_LO_DAC_CTL, 0x40, 0x40);
-#if (defined CONFIG_MACH_XIAOMI_MIDO) || (defined CONFIG_MACH_XIAOMI_TISSOT)
+#if (defined CONFIG_MACH_XIAOMI_MIDO) || (defined CONFIG_MACH_XIAOMI_TISSOT) \
+	|| (defined CONFIG_MACH_NUBIA_NX549J)
+		/*
+		 * NX549J: let the LINEOUT DAC common-mode/reference fully charge
+		 * before the DAC is used, so the symmetric POST_PMD discharge is
+		 * clean. The A9 (highwaystar) codec had this delay under
+		 * CONFIG_ZTEMT_AUDIO and was click-free; the LOS sdm660 port
+		 * inherited the xiaomi-only guard, disabling it on NX549J and
+		 * leaving a volume-independent power-down click on the AW8736
+		 * loudspeaker (fed from LINEOUT PA). Restore it.
+		 */
 		msleep(5);
 #endif
 		break;
@@ -3283,7 +3293,11 @@ static int msm_anlg_cdc_codec_enable_lo_pa(struct snd_soc_dapm_widget *w,
  * volume-INDEPENDENT and was absent on A9 (same aw8736 handling), so the
  * culprit is a power-domain transient, not the audio signal.
  */
-static int nx549j_ext_pa_keepon = 1;
+static int nx549j_ext_pa_keepon;	/* default 0: normal AW8736 power-down.
+					 * Test A proved the click is upstream of
+					 * the ext-PA (LINEOUT teardown), so EN is
+					 * dropped normally; knob kept for future
+					 * A/B. */
 module_param(nx549j_ext_pa_keepon, int, 0644);
 MODULE_PARM_DESC(nx549j_ext_pa_keepon,
 	"NX549J: keep AW8736 ext-PA enabled across DAPM power-down (click diag)");
