@@ -71,33 +71,6 @@
 #define MAX_BOOST_VOLTAGE 5550
 #define BOOST_VOLTAGE_STEP 50
 
-#ifdef CONFIG_MACH_NUBIA_NX549J
-/*
- * End-of-playback loudspeaker click localization (see NX549J remediation
- * plan). Per-stage teardown delays in ms, all default 0 (off). Set exactly
- * ONE to ~1000 via /sys/module/analog_cdc_dlkm/parameters/<name> and listen:
- * if the click moves out by the same amount, its source executes AFTER the
- * delayed point in the DAPM down-sequence; otherwise BEFORE it.
- * Order: ext_spk (first torn down) -> lo_pa -> lo_dac -> rx_bias (last).
- */
-static int nx549j_dly_ext_spk_pmd;
-static int nx549j_dly_lo_pa_pmd;
-static int nx549j_dly_lo_dac_pmd;
-static int nx549j_dly_rx_bias_pmd;
-module_param(nx549j_dly_ext_spk_pmd, int, 0644);
-module_param(nx549j_dly_lo_pa_pmd, int, 0644);
-module_param(nx549j_dly_lo_dac_pmd, int, 0644);
-module_param(nx549j_dly_rx_bias_pmd, int, 0644);
-
-static inline void nx549j_click_dly(const char *tag, int ms)
-{
-	if (ms) {
-		pr_info("nx549j-spkclick: %s delay %dms\n", tag, ms);
-		msleep(ms);
-	}
-}
-#endif
-
 #define SDM660_CDC_MBHC_BTN_COARSE_ADJ  100 /* in mV */
 #define SDM660_CDC_MBHC_BTN_FINE_ADJ 12 /* in mV */
 
@@ -2689,9 +2662,6 @@ static int msm_anlg_cdc_codec_enable_rx_bias(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-#ifdef CONFIG_MACH_NUBIA_NX549J
-		nx549j_click_dly("rx_bias_pmd", nx549j_dly_rx_bias_pmd);
-#endif
 		sdm660_cdc->rx_bias_count--;
 		if (sdm660_cdc->rx_bias_count == 0) {
 			snd_soc_update_bits(codec,
@@ -2907,9 +2877,6 @@ static int msm_anlg_cdc_lo_dac_event(struct snd_soc_dapm_widget *w,
 			MSM89XX_PMIC_ANALOG_RX_LO_DAC_CTL, 0x08, 0x00);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-#ifdef CONFIG_MACH_NUBIA_NX549J
-		nx549j_click_dly("lo_dac_pmd", nx549j_dly_lo_dac_pmd);
-#endif
 		/* Wait for 20ms before powerdown of lineout_dac */
 		usleep_range(20000, 20100);
 		snd_soc_update_bits(codec,
@@ -3307,9 +3274,6 @@ static int msm_anlg_cdc_codec_enable_lo_pa(struct snd_soc_dapm_widget *w,
 				       DIG_CDC_EVENT_RX3_MUTE_OFF);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-#ifdef CONFIG_MACH_NUBIA_NX549J
-		nx549j_click_dly("lo_pa_pmd", nx549j_dly_lo_pa_pmd);
-#endif
 		msm_anlg_cdc_dig_notifier_call(codec,
 				       DIG_CDC_EVENT_RX3_MUTE_ON);
 		break;
@@ -3317,27 +3281,6 @@ static int msm_anlg_cdc_codec_enable_lo_pa(struct snd_soc_dapm_widget *w,
 
 	return 0;
 }
-
-#ifdef CONFIG_MACH_NUBIA_NX549J
-/*
- * NX549J end-of-playback loudspeaker-click diagnostic.
- * When set (default), the AW8736 external speaker PA is NOT powered down on
- * the DAPM teardown, i.e. its EN edge is removed from the standby sequence.
- * Runtime-togglable via /sys/module/.../parameters/nx549j_ext_pa_keepon to
- * A/B whether the click is the AW8736 EN transition itself or an upstream
- * LINEOUT-PA/DAC analog transient, without reflashing. The click is
- * volume-INDEPENDENT and was absent on A9 (same aw8736 handling), so the
- * culprit is a power-domain transient, not the audio signal.
- */
-static int nx549j_ext_pa_keepon;	/* default 0: normal AW8736 power-down.
-					 * Test A proved the click is upstream of
-					 * the ext-PA (LINEOUT teardown), so EN is
-					 * dropped normally; knob kept for future
-					 * A/B. */
-module_param(nx549j_ext_pa_keepon, int, 0644);
-MODULE_PARM_DESC(nx549j_ext_pa_keepon,
-	"NX549J: keep AW8736 ext-PA enabled across DAPM power-down (click diag)");
-#endif
 
 static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 						struct snd_kcontrol *kcontrol,
@@ -3352,24 +3295,26 @@ static int msm_anlg_cdc_codec_enable_spk_ext_pa(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_POST_PMU:
 		dev_dbg(codec->dev,
 			"%s: enable external speaker PA\n", __func__);
-#ifdef CONFIG_MACH_NUBIA_NX549J
-		pr_info("nx549j-spkclick: ext-PA POST_PMU enable\n");
-#endif
 		if (sdm660_cdc->codec_spk_ext_pa_cb)
 			sdm660_cdc->codec_spk_ext_pa_cb(codec, 1);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		dev_dbg(codec->dev,
 			"%s: disable external speaker PA\n", __func__);
-#ifdef CONFIG_MACH_NUBIA_NX549J
-		pr_info("nx549j-spkclick: ext-PA PRE_PMD disable keepon=%d\n",
-			nx549j_ext_pa_keepon);
-		nx549j_click_dly("ext_spk_pmd", nx549j_dly_ext_spk_pmd);
-		if (nx549j_ext_pa_keepon)
-			break;
-#endif
 		if (sdm660_cdc->codec_spk_ext_pa_cb)
 			sdm660_cdc->codec_spk_ext_pa_cb(codec, 0);
+#ifdef CONFIG_MACH_NUBIA_NX549J
+		/*
+		 * NX549J: the AW8736 ext PA needs real time to shut down after
+		 * EN is pulled low; the LINEOUT PA/DAC teardown that follows in
+		 * the DAPM down-sequence emits a volume-independent analog
+		 * transient, audible as an end-of-playback click while the amp
+		 * is still live. On-device audible bisect localized the click
+		 * to this window; 20 ms measured click-free, ship 2x margin.
+		 * See NX549J_REMEDIATION_PLAN_20260707.md (2026-07-08).
+		 */
+		msleep(40);
+#endif
 		break;
 	}
 	return 0;
