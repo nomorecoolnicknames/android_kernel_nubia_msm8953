@@ -274,7 +274,34 @@ int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	spin_lock_init(&axi_data->stream_info[i].lock);
 	axi_data->stream_info[i].session_id = stream_cfg_cmd->session_id;
 	axi_data->stream_info[i].stream_id = stream_cfg_cmd->stream_id;
-	axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
+	/*
+	 * NX549J PROPER-FIX (black preview root, CONFIG path):
+	 * The mm-camera daemon ALWAYS requests buf_divert=1 in the
+	 * CFG_STREAM request for the live preview stream. On this device
+	 * the user-visible preview (1920x1080 NV12) runs as src=1
+	 * PIX_VIEWFINDER (enum msm_vfe_axi_stream_src: PIX_ENCODER=0,
+	 * PIX_VIEWFINDER=1, PIX_VIDEO=2). With divert=1 VFE routes completed
+	 * frames to CPP; CPP's msm_cpp_get_phy_addr() fails on the gralloc
+	 * output buffer (native_buff=0 -> 'error gettting output physical
+	 * address') -> frames dropped -> black preview. Here i ==
+	 * stream_cfg_cmd->stream_src (set above), so force disdivert for the
+	 * PIX_VIEWFINDER (live preview) stream: VFE then writes the mapped
+	 * gralloc display buffer directly. Stats src=5/6 (RDI_INTF) keep
+	 * their daemon-requested divert.
+	 * Evidence: kernel #264 with the prior UPDATE-path guard (never
+	 * matched because it checked PIX_ENCODER=0) still showed
+	 * request_axi enter/done src=1 divert=1 + MSM-CPP physical-address
+	 * errors x4; the divert is seeded at create_stream (this line), NOT
+	 * by a later ENABLE_STREAM_BUF_DIVERT update (that case never fired
+	 * for preview in dmesg). Rollback: revert this hunk.
+	 */
+	if (i == PIX_VIEWFINDER) {
+		axi_data->stream_info[i].buf_divert = 0;
+		pr_err_ratelimited("NX549J: cfg-stream zero buf_divert for PIX_VIEWFINDER preview src=%d handle=0x%x (PROPER-FIX)\n",
+			i, stream_cfg_cmd->axi_stream_handle);
+	} else {
+		axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
+	}
 	axi_data->stream_info[i].state = INACTIVE;
 	axi_data->stream_info[i].stream_handle =
 		stream_cfg_cmd->axi_stream_handle;
@@ -4072,6 +4099,29 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 				&update_cmd->update_info[i];
 			stream_info = &axi_data->stream_info[HANDLE_TO_IDX(
 				update_info->stream_handle)];
+			/*
+			 * NX549J PROPER-FIX (defensive): the primary
+			 * buf_divert fix is at create_stream (CONFIG path,
+			 * see msm_isp_axi_create_stream). This UPDATE path is
+			 * kept defensive in case the daemon later sends an
+			 * ENABLE_STREAM_BUF_DIVERT for the PIX_VIEWFINDER
+			 * (src=1, live preview) stream; we re-zero divert so
+			 * VFE keeps writing the gralloc display buffer
+			 * directly instead of routing to CPP (whose
+			 * msm_cpp_get_phy_addr fails with native_buff=0 ->
+			 * black preview). Stats src=5/6 keep divert.
+			 * Evidence: on kernel #264 the ENABLE_STREAM_BUF_DIVERT
+			 * case never fired for the preview (dmesg count 0), so
+			 * this branch is a safety net, not the main fix.
+			 * Rollback: revert this hunk + the create_stream hunk.
+			 */
+			if (stream_info->stream_src == PIX_VIEWFINDER) {
+				pr_err_ratelimited("NX549J: update zero buf_divert for PIX_VIEWFINDER preview handle=0x%x src=%d (PROPER-FIX)\n",
+					update_info->stream_handle,
+					stream_info->stream_src);
+				stream_info->buf_divert = 0;
+				continue;
+			}
 			stream_info->buf_divert = 1;
 		}
 		break;
