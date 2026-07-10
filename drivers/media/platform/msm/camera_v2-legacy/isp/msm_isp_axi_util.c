@@ -274,34 +274,7 @@ int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	spin_lock_init(&axi_data->stream_info[i].lock);
 	axi_data->stream_info[i].session_id = stream_cfg_cmd->session_id;
 	axi_data->stream_info[i].stream_id = stream_cfg_cmd->stream_id;
-	/*
-	 * NX549J PROPER-FIX (black preview root, CONFIG path):
-	 * The mm-camera daemon ALWAYS requests buf_divert=1 in the
-	 * CFG_STREAM request for the live preview stream. On this device
-	 * the user-visible preview (1920x1080 NV12) runs as src=1
-	 * PIX_VIEWFINDER (enum msm_vfe_axi_stream_src: PIX_ENCODER=0,
-	 * PIX_VIEWFINDER=1, PIX_VIDEO=2). With divert=1 VFE routes completed
-	 * frames to CPP; CPP's msm_cpp_get_phy_addr() fails on the gralloc
-	 * output buffer (native_buff=0 -> 'error gettting output physical
-	 * address') -> frames dropped -> black preview. Here i ==
-	 * stream_cfg_cmd->stream_src (set above), so force disdivert for the
-	 * PIX_VIEWFINDER (live preview) stream: VFE then writes the mapped
-	 * gralloc display buffer directly. Stats src=5/6 (RDI_INTF) keep
-	 * their daemon-requested divert.
-	 * Evidence: kernel #264 with the prior UPDATE-path guard (never
-	 * matched because it checked PIX_ENCODER=0) still showed
-	 * request_axi enter/done src=1 divert=1 + MSM-CPP physical-address
-	 * errors x4; the divert is seeded at create_stream (this line), NOT
-	 * by a later ENABLE_STREAM_BUF_DIVERT update (that case never fired
-	 * for preview in dmesg). Rollback: revert this hunk.
-	 */
-	if (i == PIX_VIEWFINDER) {
-		axi_data->stream_info[i].buf_divert = 0;
-		pr_err_ratelimited("NX549J: cfg-stream zero buf_divert for PIX_VIEWFINDER preview src=%d handle=0x%x (PROPER-FIX)\n",
-			i, stream_cfg_cmd->axi_stream_handle);
-	} else {
-		axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
-	}
+	axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
 	axi_data->stream_info[i].state = INACTIVE;
 	axi_data->stream_info[i].stream_handle =
 		stream_cfg_cmd->axi_stream_handle;
@@ -2047,16 +2020,8 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 		queue_req = list_first_entry_or_null(
 			&temp_stream_info->request_q,
 			struct msm_vfe_frame_request_queue, list);
-		if (!queue_req) {
-			if (nx549j_isp_diag_is_burst_stream(temp_stream_info))
-				pr_err("NX549J camera ispdiag: get_stream_buffer no_request vfe=%d handle=0x%x q_cnt=%u undelivered=%u sw_pp=%u\n",
-					vfe_dev->pdev->id,
-					temp_stream_info->stream_handle,
-					temp_stream_info->request_q_cnt,
-					temp_stream_info->undelivered_request_cnt,
-					temp_stream_info->sw_ping_pong_bit);
+		if (!queue_req)
 			return buf;
-		}
 
 		bufq_handle = temp_stream_info->
 			bufq_handle[queue_req->buff_queue_id];
@@ -2065,13 +2030,6 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 			temp_stream_info->request_q_cnt <= 0) {
 			pr_err_ratelimited("%s: Drop request. Shared stream is stopped.\n",
 			__func__);
-			if (nx549j_isp_diag_is_burst_stream(temp_stream_info))
-				pr_err("NX549J camera ispdiag: get_stream_buffer bad_queue vfe=%d handle=0x%x qid=%u bufq=0x%x q_cnt=%u idx=%u\n",
-					vfe_dev->pdev->id,
-					temp_stream_info->stream_handle,
-					queue_req->buff_queue_id, bufq_handle,
-					temp_stream_info->request_q_cnt,
-					queue_req->buf_index);
 			return buf;
 		}
 		buf_index = queue_req->buf_index;
@@ -2081,14 +2039,6 @@ static struct msm_isp_buffer *msm_isp_get_stream_buffer(
 	}
 	rc = vfe_dev->buf_mgr->ops->get_buf(vfe_dev->buf_mgr,
 		vfe_dev->pdev->id, bufq_handle, buf_index, &buf);
-	if (nx549j_isp_diag_is_burst_stream(stream_info) ||
-		nx549j_isp_diag_is_burst_stream(temp_stream_info))
-		pr_err("NX549J camera ispdiag: get_stream_buffer vfe=%d handle=0x%x stream=%u controllable=%u bufq=0x%x requested_idx=%u rc=%d buf=%pK buf_idx=%d buf_planes=%u\n",
-			vfe_dev->pdev->id, stream_info->stream_handle,
-			stream_info->stream_id, stream_info->controllable_output,
-			bufq_handle, buf_index, rc, buf,
-			buf ? (int)buf->buf_idx : -1,
-			buf ? buf->num_planes : 0);
 
 	if (rc == -EFAULT) {
 		msm_isp_halt_send_error(vfe_dev,
@@ -2421,14 +2371,6 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 		pr_err_ratelimited("%s: Error getting buf_src\n", __func__);
 		return -EINVAL;
 	}
-	if (nx549j_isp_diag_is_burst_stream(stream_info))
-		pr_err("NX549J camera ispdiag: process_done enter vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x buf_src=%u drop=%u divert=%u fmt=0x%x\n",
-			vfe_dev->pdev->id, stream_info->stream_handle,
-			stream_info->stream_id, frame_id, buf->buf_idx,
-			buf->bufq_handle, buf_src, drop_frame,
-			stream_info->buf_divert,
-			stream_info->runtime_output_format);
-
 	if (drop_frame) {
 		buf->buf_debug.put_state[
 			buf->buf_debug.put_state_last] =
@@ -2446,12 +2388,6 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 			return rc;
 		}
 		if (!rc) {
-			if (nx549j_isp_diag_is_burst_stream(stream_info))
-				pr_err("NX549J camera ispdiag: process_done dropped vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u rc=0\n",
-					vfe_dev->pdev->id,
-					stream_info->stream_handle,
-					stream_info->stream_id, frame_id,
-					buf->buf_idx);
 			ISP_DBG("%s:%d vfe_id %d Buffer dropped %d\n",
 				__func__, __LINE__, vfe_dev->pdev->id,
 				frame_id);
@@ -2498,22 +2434,12 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 		else
 			msm_isp_send_event(vfe_dev,
 			ISP_EVENT_BUF_DIVERT, &buf_event);
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: process_done sent_divert vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x buf_type=%d\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, frame_id, buf->buf_idx,
-				buf->bufq_handle, bufq ? bufq->buf_type : -1);
 	} else {
 		ISP_DBG("%s: vfe_id %d send buf done buf-id %d bufq %x\n",
 			__func__, vfe_dev->pdev->id, buf->buf_idx,
 			buf->bufq_handle);
 		msm_isp_send_event(vfe_dev, ISP_EVENT_BUF_DONE,
 			&buf_event);
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: process_done sent_buf_done vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, frame_id, buf->buf_idx,
-				buf->bufq_handle);
 		buf->buf_debug.put_state[
 			buf->buf_debug.put_state_last] =
 			MSM_ISP_BUFFER_STATE_PUT_BUF;
@@ -2526,11 +2452,6 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 					ISP_EVENT_BUF_FATAL_ERROR);
 			return rc;
 		}
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: process_done buf_done_returned vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u rc=%d\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, frame_id, buf->buf_idx,
-				rc);
 	}
 
 	return 0;
@@ -4099,29 +4020,6 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 				&update_cmd->update_info[i];
 			stream_info = &axi_data->stream_info[HANDLE_TO_IDX(
 				update_info->stream_handle)];
-			/*
-			 * NX549J PROPER-FIX (defensive): the primary
-			 * buf_divert fix is at create_stream (CONFIG path,
-			 * see msm_isp_axi_create_stream). This UPDATE path is
-			 * kept defensive in case the daemon later sends an
-			 * ENABLE_STREAM_BUF_DIVERT for the PIX_VIEWFINDER
-			 * (src=1, live preview) stream; we re-zero divert so
-			 * VFE keeps writing the gralloc display buffer
-			 * directly instead of routing to CPP (whose
-			 * msm_cpp_get_phy_addr fails with native_buff=0 ->
-			 * black preview). Stats src=5/6 keep divert.
-			 * Evidence: on kernel #264 the ENABLE_STREAM_BUF_DIVERT
-			 * case never fired for the preview (dmesg count 0), so
-			 * this branch is a safety net, not the main fix.
-			 * Rollback: revert this hunk + the create_stream hunk.
-			 */
-			if (stream_info->stream_src == PIX_VIEWFINDER) {
-				pr_err_ratelimited("NX549J: update zero buf_divert for PIX_VIEWFINDER preview handle=0x%x src=%d (PROPER-FIX)\n",
-					update_info->stream_handle,
-					stream_info->stream_src);
-				stream_info->buf_divert = 0;
-				continue;
-			}
 			stream_info->buf_divert = 1;
 		}
 		break;
@@ -4426,18 +4324,6 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		return;
 	}
 	done_buf = stream_info->buf[pingpong_bit];
-	if (nx549j_isp_diag_is_burst_stream(stream_info))
-		pr_err("NX549J camera ispdiag: axi_irq_stream enter vfe=%d handle=0x%x stream=%u state=%d type=%d frame=%u local_frame=%u pp_status=0x%x pp_bit=%u done_buf=%pK done_idx=%d done_bufq=0x%x runtime_burst=%u num_burst=%u undelivered=%u q_cnt=%u buf_divert=%u\n",
-			vfe_dev->pdev->id, stream_info->stream_handle,
-			stream_info->stream_id, stream_info->state,
-			stream_info->stream_type, frame_id,
-			stream_info->frame_id, pingpong_status, pingpong_bit,
-			done_buf, done_buf ? (int)done_buf->buf_idx : -1,
-			done_buf ? done_buf->bufq_handle : 0,
-			stream_info->runtime_num_burst_capture,
-			stream_info->num_burst_capture,
-			stream_info->undelivered_request_cnt,
-			stream_info->request_q_cnt, stream_info->buf_divert);
 
 	if (vfe_dev->buf_mgr->frameId_mismatch_recovery == 1) {
 		pr_err_ratelimited("%s: Mismatch Recovery in progress, drop frame!\n",
@@ -4462,14 +4348,6 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		done_buf ? done_buf->bufq_handle :
 		stream_info->bufq_handle[VFE_BUF_QUEUE_DEFAULT], buf_index,
 		time_stamp, frame_id, pingpong_bit);
-	if (nx549j_isp_diag_is_burst_stream(stream_info))
-		pr_err("NX549J camera ispdiag: axi_irq_stream put_cnt vfe=%d handle=0x%x stream=%u frame=%u bufq=0x%x idx=%d pp_bit=%u rc=%d\n",
-			vfe_dev->pdev->id, stream_info->stream_handle,
-			stream_info->stream_id, frame_id,
-			done_buf ? done_buf->bufq_handle :
-				stream_info->bufq_handle[VFE_BUF_QUEUE_DEFAULT],
-			buf_index, pingpong_bit, rc);
-
 	if (rc < 0) {
 		spin_unlock_irqrestore(&stream_info->lock, flags);
 		/* this usually means a serious scheduling error */
@@ -4483,10 +4361,6 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 	 * A negative value is error. Return in both cases.
 	 */
 	if (rc != 0) {
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: axi_irq_stream put_cnt_deferred vfe=%d handle=0x%x stream=%u frame=%u rc=%d\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, frame_id, rc);
 		spin_unlock_irqrestore(&stream_info->lock, flags);
 		return;
 	}
@@ -4507,14 +4381,6 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 	}
 
 	if (!done_buf) {
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: axi_irq_stream no_done_buf vfe=%d handle=0x%x stream=%u frame=%u pp_status=0x%x pp_bit=%u buf_divert=%u default_bufq=0x%x\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, frame_id,
-				pingpong_status, pingpong_bit,
-				stream_info->buf_divert,
-				stream_info->bufq_handle[
-					VFE_BUF_QUEUE_DEFAULT]);
 		if (stream_info->buf_divert) {
 			vfe_dev->error_info.stream_framedrop_count[
 				stream_info->bufq_handle[
@@ -4563,22 +4429,11 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 
 	if ((done_buf->frame_id != frame_id) &&
 		vfe_dev->axi_data.enable_frameid_recovery) {
-		if (nx549j_isp_diag_is_burst_stream(stream_info))
-			pr_err("NX549J camera ispdiag: axi_irq_stream frame_mismatch vfe=%d handle=0x%x stream=%u buf_frame=%u irq_frame=%u\n",
-				vfe_dev->pdev->id, stream_info->stream_handle,
-				stream_info->stream_id, done_buf->frame_id,
-				frame_id);
 		msm_isp_handle_done_buf_frame_id_mismatch(vfe_dev,
 			stream_info, done_buf, time_stamp, frame_id);
 		return;
 	}
 
-	if (nx549j_isp_diag_is_burst_stream(stream_info))
-		pr_err("NX549J camera ispdiag: axi_irq_stream process_done vfe=%d handle=0x%x stream=%u frame=%u buf_idx=%u bufq=0x%x runtime_fmt=0x%x\n",
-			vfe_dev->pdev->id, stream_info->stream_handle,
-			stream_info->stream_id, frame_id, done_buf->buf_idx,
-			done_buf->bufq_handle,
-			stream_info->runtime_output_format);
 	msm_isp_process_done_buf(vfe_dev, stream_info,
 			done_buf, time_stamp, frame_id);
 }
@@ -4601,16 +4456,6 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 		get_wm_mask(irq_status0, irq_status1);
 	if (!(comp_mask || wm_mask))
 		return;
-
-	/*
-	 * NX549J camera bring-up: promoted to pr_err_ratelimited for the
-	 * frozen-preview hunt — shows whether WM/comp done IRQs keep firing
-	 * after the first frame on the continuous (non-burst) preview stream.
-	 */
-	pr_err_ratelimited("NX549J camera ispdiag: axi_irq masks vfe=%d irq0=0x%x irq1=0x%x pp=0x%x comp=0x%x wm=0x%x active_streams=%u\n",
-		vfe_dev->pdev->id, irq_status0, irq_status1,
-		pingpong_status, comp_mask, wm_mask,
-		axi_data->num_active_stream);
 
 	ISP_DBG("%s: status: 0x%x\n", __func__, irq_status0);
 
@@ -4635,12 +4480,6 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 			}
 			stream_idx = HANDLE_TO_IDX(comp_info->stream_handle);
 			stream_info = &axi_data->stream_info[stream_idx];
-			if (nx549j_isp_diag_is_burst_stream(stream_info))
-				pr_err("NX549J camera ispdiag: axi_irq comp_hit vfe=%d comp=%d handle=0x%x stream=%u comp_mask=0x%x wm_remaining=0x%x pp=0x%x\n",
-					vfe_dev->pdev->id, i,
-					stream_info->stream_handle,
-					stream_info->stream_id, comp_mask,
-					wm_mask, pingpong_status);
 			msm_isp_process_axi_irq_stream(vfe_dev, stream_info,
 						pingpong_status, ts);
 
@@ -4659,13 +4498,6 @@ void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 				continue;
 			}
 			stream_info = &axi_data->stream_info[stream_idx];
-			if (nx549j_isp_diag_is_burst_stream(stream_info))
-				pr_err("NX549J camera ispdiag: axi_irq wm_hit vfe=%d wm=%d handle=0x%x stream=%u wm_mask=0x%x pp=0x%x free_wm=0x%x\n",
-					vfe_dev->pdev->id, i,
-					stream_info->stream_handle,
-					stream_info->stream_id, wm_mask,
-					pingpong_status, axi_data->free_wm[i]);
-
 			msm_isp_process_axi_irq_stream(vfe_dev, stream_info,
 						pingpong_status, ts);
 		}

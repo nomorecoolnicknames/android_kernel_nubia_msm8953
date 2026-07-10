@@ -8267,3 +8267,203 @@ Final packaged artifact for this batch:
   `vendor/nubia/nx549j/proprietary/vendor/lib/libmmcamera2_sensor_modules.so`
   was updated to attempt247, and
   `device/nubia/nx549j/proprietary-files.txt` now records the attempt247 SHA-1.
+
+2026-07-10 cycle13-cycle17 camera preview and readiness handoff:
+
+### PROPER-FIX: restore daemon buffer diversion and complete ACK before logging
+
+- Patch categories:
+  `PROPER-FIX` covers the native/compat diversion restoration and ACK
+  completion ordering; the bounded CPP registration markers are
+  `DIAGNOSTIC` and do not alter the functional data path.
+- Hypothesis:
+  the daemon-requested preview path was previously broken by forcing
+  `buf_divert=0`, and the later cycle-14 `STREAM_ON` timeout was an observer
+  effect from synchronous multi-line `pr_err` diagnostics before the kernel
+  enqueued and completed the daemon ACK. The correct kernel behavior is to
+  preserve the requested diversion bit, enqueue/complete/unlock first, and
+  emit only a bounded marker afterwards.
+- Evidence before the fix:
+  kernel `#268` plus the corrected userspace wire ABI registered CPP output
+  indices 0/1/2 at IOVAs `0x20000`, `0x420000`, and `0x820000`. It then
+  selected 237 CPP output buffers across frames 3-239 without a physical
+  address, fetch, or completion error. Nevertheless SurfaceFlinger still had
+  no camera buffer. The daemon entered `MSM_CAM_V4L2_IOCTL_CMD_ACK`, emitted
+  the first raw-event printk, never reached the second printk/enqueue marker,
+  and its main thread stayed at effectively 100% system CPU until the HAL
+  timed out.
+- Files changed:
+  - `drivers/media/platform/msm/camera_v2-legacy/isp/msm_isp_axi_util.c`:
+    preserve userspace `buf_divert` and remove unbounded per-frame ISP logs.
+  - `drivers/media/platform/msm/camera_v2-legacy/isp/msm_isp_axi_util_32.c`:
+    remove the matching compat forced-divert override.
+  - `drivers/media/platform/msm/camera_v2-legacy/msm.c`:
+    remove raw packet dumps and move the sparse stream ACK marker after
+    enqueue, completion, and spin unlock.
+  - `drivers/media/platform/msm/camera_v2-legacy/pproc/cpp/msm_cpp.c`:
+    add bounded stream-buffer ABI/registration markers (`DIAGNOSTIC`).
+  - `drivers/media/platform/msm/camera_v2-legacy/isp/msm_isp40.c`,
+    `isp/msm_isp_util.c`, and `sensor/msm_sensor.c`: remove completed
+    per-frame/per-array diagnostic floods.
+- Why each file changed:
+  the two AXI implementations are the native/compat owners of the diversion
+  bit; `msm.c` owns the daemon command ACK completion; CPP keeps the bounded
+  evidence that proved the 28-byte map ABI; the remaining files only owned
+  diagnostics that had already answered their questions and materially
+  perturbed scheduling.
+- Exact artifact identity:
+  - `boot.img`: `12967936` bytes, exactly 3166 4096-byte blocks;
+  - SHA-256:
+    `a43757c3eef7f2a3591e35d7b0573b5a9664fd4ad6ee78a36cf3f80cd389e458`;
+  - `vmlinux`:
+    `captures/cycle15-ack-complete-k269/vmlinux-k269-00019ebe`, SHA-256
+    `00019ebe17ccb2e4a8db9aa92fe64c4d4b34ee316a8238b948b67da74ffee343`;
+  - `System.map`:
+    `captures/cycle15-ack-complete-k269/System.map-k269-4096f1f4`, SHA-256
+    `4096f1f4621cdeed29e14f9021e2998fc5a9d86e0f54f24f10d1cc6a0ed12964`;
+  - `.config`:
+    `captures/cycle15-ack-complete-k269/config-k269-005c4918`, SHA-256
+    `005c491876af946abc650c6e56f9b3b1a64ddce57fbcbf8ccaceec60390ba266`;
+  - `Image.gz-dtb`:
+    `captures/cycle15-ack-complete-k269/Image.gz-dtb-k269-b4ce7926`, SHA-256
+    `b4ce7926e2a6a8d45afc18548bdd91754efad8bc1362320021c5682fb79cb1da`;
+  - runtime identity:
+    `4.9.227-perf+ #269 SMP PREEMPT Fri Jul 10 09:35:24 CDT 2026`.
+- Packaging comparison:
+  the `#268` and `#269` ramdisks are identical with SHA-256
+  `321b55b5e25ea1ffa685e4f5478c22fa55be5d4dfcd7a90ebf366c1d9ae5fe8e`;
+  the appended DTBs are identical with SHA-256
+  `4f125899e9bb51dbf9ca172d89363e1d1607cf563190139bd4703bbfc7d4f8a6`.
+  Header addresses, page size, and cmdline are unchanged; only the kernel and
+  total boot sizes changed.
+- Flash/rollback proof:
+  the full pre-flash `/dev/block/mmcblk0p21` backup is
+  `captures/boot-k268-pre-k269-20260710.img`, 41943040 bytes, SHA-256
+  `9df1ccff7bc108c3e9d93fe967f4ec0bd8141a3d7b29671f4cd2945a2c0fa95c`.
+  The exact 3166-block readback of `#269` matched the boot artifact before
+  reboot and again directly from the partition after runtime boot. The new
+  full-partition SHA-256 is
+  `f7faafdb5e4908ef59fbe12454e750dab21da870e42e3c5d3f9e11bfa0dd7ea1`.
+- Expected next marker:
+  daemon `CMD_SUCCESS` must be completed before the sparse kernel marker;
+  HAL `VIDIOC_STREAMON` and `start_preview` must return zero; SurfaceFlinger
+  must own a 1920x1080 YUV camera buffer.
+- Observed next marker:
+  cycle15 shows stream 2 `CMD_SUCCESS` at `17:58:10.743`, HAL stream-on
+  `rc=0` and `start_preview ret=0` at `17:58:10.804`. SurfaceFlinger showed a
+  1920x1080 active buffer and HWC `Y_CRCB_420`. Screenshot
+  `captures/cycle15-ack-complete-k269/nx549j-opencamera-k269-cycle15.png`
+  visibly contains the live rear-camera scene; SHA-256
+  `efaba44b99fce6f07d16aeb2e3ecf223e56cf02a1ff4ed50869ce5d98ac80b26`.
+  The preview ran for about three minutes with per-frame PDAF updates. It
+  stopped only when `org.lineageos.snap` was explicitly brought to the
+  foreground. The daemon later sampled at 0% CPU and was not wedged.
+- Primary runtime evidence:
+  - logcat:
+    `captures/cycle15-ack-complete-k269/nx549j-opencamera-k269-cycle15.log`,
+    SHA-256
+    `dd46c381533ffb08ebc9a71fe2d0538894f2d01eb9620444911c772cb72e70ee`;
+  - dmesg:
+    `captures/cycle15-ack-complete-k269/nx549j-opencamera-k269-cycle15.dmesg`,
+    SHA-256
+    `a57e9fd7ea2eb1bed729f4790018120426cb3cb86149f6309facb865cbfb8b7e`.
+- Rollback condition:
+  restore the full `#268` partition backup if `#269` fails to boot, changes
+  DT/ramdisk identity, regresses the proven CPP registrations, or introduces
+  an ACK mismatch not present with the stock completion ordering.
+- Verification commands:
+  - `sha256sum out/target/product/nx549j/boot.img`
+  - `strings out/target/product/nx549j/obj/KERNEL_OBJ/vmlinux | rg -m1 '^Linux version'`
+  - `abootimg -i out/target/product/nx549j/boot.img`
+  - `adb -s 30785d1a shell 'dd if=/dev/block/mmcblk0p21 bs=4096 count=3166 | sha256sum'`
+  - `adb -s 30785d1a shell am start -W -n net.sourceforge.opencamera/.MainActivity`
+  - `adb -s 30785d1a shell dumpsys SurfaceFlinger`
+
+### PROPER-FIX: explicit 28-byte camera map wire ABI
+
+- Hypothesis and evidence:
+  the stock 32-bit daemon advances bundled map entries by 28 bytes, while the
+  tissot client sent its 32-byte internal `cam_buf_map_type` including a local
+  pointer. That shifted every entry after index zero and caused the original
+  CPP physical-address miss.
+- Device-tree files:
+  `camera/QCamera2/stack/common/cam_types.h`,
+  `camera/QCamera2/stack/mm-camera-interface/src/mm_camera.c`, and
+  `mm_camera_stream.c` now keep the pointer-rich structure internal and
+  marshal a seven-u32 wire entry explicitly. Compile-time assertions enforce
+  entry/list/packet sizes 28/1796/1800 bytes.
+- Built/live modules:
+  - `/vendor/lib/hw/camera.msm8953.so` SHA-256
+    `a2a5d6a8e8f42873d40ccfac40901e0fc3bf465296771a8cb02b9f4d1dc29129`;
+  - `/vendor/lib/libmmcamera_interface.so` SHA-256
+    `a32f1cf9da71cde04fbf45e877f64dbec26a247d2962ce8122af23d06a3d2054`.
+- Expected and observed marker:
+  CPP must register indices 0/1/2 with distinct mapped addresses and process
+  more than the initial buffer pool. Kernel `#268` observed all three and 237
+  alternating output selections; `#269` retained the same registrations and
+  delivered a visible frame.
+- Rollback condition:
+  revert only if a daemon capture proves a different entry stride or the
+  explicit conversion corrupts single-map/unmap operations.
+
+### PROPER-FIX prepared: sensor init-config condition deadline
+
+- Hypothesis:
+  the temporary 2200 ms MCI sleep masks a proprietary sensor-offload
+  readiness race. A correct daemon-owned condition wait should make the
+  delay unnecessary on cold opens and physical reopen/app-switch cycles.
+- Decisive negative test:
+  after a clean reboot on `#269`, setting
+  `persist.camera.bringup_streamon_delay_ms=0` made preview stream 2 return
+  daemon `ERR_CMD_FAIL` at `18:12:15.240`; IMX318 `match_id` completed only at
+  `18:12:15.868`, 628 ms later. VB2 stream-on had already returned zero.
+  Evidence is under `captures/cycle16-k269-prop0/`:
+  logcat SHA-256
+  `867766db244bdc44eda462a15248b02c91b18f5b1595b761d727248b8ef21d32`
+  and dmesg SHA-256
+  `65526eab53bce7af4585b872e521012b31ce27a5e273541f0ed15d7b9b043d09`.
+- Root cause:
+  `libmmcamera2_sensor_modules.so` owns `init_config_done` at bundle offset
+  `0xefb0`, with a mutex/condvar at `+0xefa8/+0xefac`. The consumer at
+  `0x22ece..0x22ee4` adds 1000000000 to `timespec.tv_nsec`, so
+  `pthread_cond_timedwait` immediately returns `EINVAL` and the pending zero
+  is reported as `ERR_CMD_FAIL`.
+- Correct six-byte patch:
+  - `0x22ece: db f8 04 20 -> db f8 00 20` (load `tv_sec`);
+  - `0x22ee4: cb f8 04 30 -> cb f8 00 30` (store `tv_sec`);
+  - `0x23198: 00 ca 9a 3b -> 01 00 00 00` (add one second).
+- Patched blob identity:
+  size `1060456`, Build ID unchanged
+  `84fcc07019a2f116fea07e4b41ddd6b1`, SHA-256
+  `ad29a1ac3f87eebbfba0a5a35b47156d09703a15b4854d95ec70e9416ccfce5e`,
+  SHA-1 `6de1a93d8e7110de65c2c1f9c2a7944e16916bed`.
+- Files prepared:
+  `device/nubia/nx549j/tools/patch_sensor_init_config_wait.py` is a
+  hash/size/byte-guarded reproducer;
+  `device/nubia/nx549j/extract-files.sh` runs it in place after the existing
+  camera-config path fixup, so re-extraction cannot silently restore the bad
+  deadline;
+  `device/nubia/nx549j/proprietary-files.txt` records the new SHA-1; and the
+  build-tree vendor blob is patched. Full details and before/after artifacts
+  are in `captures/cycle17-sensor-init-predicate/`.
+- Host verification:
+  sourcing `extract-files.sh` and invoking `blob_fixup` on the archived
+  original produced a byte-identical copy of the archived patched artifact,
+  SHA-256 `ad29a1ac...ccfce5e`; `bash -n extract-files.sh` and targeted
+  `git diff --check` both passed.
+- Current deployment state:
+  not runtime verified. The patched blob is staged and hash-verified in
+  container 228, but the phone disappeared from container USB immediately
+  after `adb remount`, before the live file was backed up or replaced. The
+  last verified live `/vendor/lib/libmmcamera2_sensor_modules.so` therefore
+  remains the original SHA-256 `174c5e1a...52de9`. The delay property was
+  restored to `2200` before USB loss.
+- Expected next marker:
+  with the patched blob and delay `0`, stream 2 must block until
+  `init_config_done` is signalled, then return `CMD_SUCCESS`; sensor
+  `match_id` must precede that ACK. Validate cold rear/front opens and at
+  least five full close/reopen or OpenCamera/Snap switches.
+- Rollback condition:
+  restore the archived original blob if the patched wait exceeds one second,
+  deadlocks, changes Build ID/size, or turns a real `init_config_done=-1`
+  failure into success. Never relax the `>0` branch.

@@ -145,27 +145,6 @@ static bool nx549j_isp_ioctl_should_log(unsigned int cmd)
 	}
 }
 
-static bool nx549j_isp_has_burst_stream(struct vfe_device *vfe_dev)
-{
-	int i;
-	struct msm_vfe_axi_stream *stream_info;
-
-	if (!vfe_dev)
-		return false;
-
-	for (i = 0; i < VFE_AXI_SRC_MAX; i++) {
-		stream_info = &vfe_dev->axi_data.stream_info[i];
-		if (stream_info->state == AVAILABLE ||
-			stream_info->state == INACTIVE)
-			continue;
-		if (stream_info->stream_type == BURST_STREAM ||
-			stream_info->num_burst_capture ||
-			stream_info->runtime_num_burst_capture)
-			return true;
-	}
-	return false;
-}
-
 void msm_isp_print_fourcc_error(const char *origin, uint32_t fourcc_format)
 {
 	int i;
@@ -2210,13 +2189,6 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	}
 	ping_pong_status = vfe_dev->hw_info->vfe_ops.axi_ops.
 		get_pingpong_status(vfe_dev);
-	if (nx549j_isp_has_burst_stream(vfe_dev))
-		pr_err_ratelimited("NX549J camera ispdiag: irq burst_active vfe=%d raw_irq0=0x%x raw_irq1=0x%x pp=0x%x camif_state=%d active_streams=%u open_cnt=%u overflow=%d\n",
-			vfe_dev->pdev->id, irq_status0, irq_status1,
-			ping_pong_status, vfe_dev->axi_data.camif_state,
-			vfe_dev->axi_data.num_active_stream,
-			vfe_dev->vfe_open_cnt,
-			atomic_read(&vfe_dev->error_info.overflow_state));
 	if (vfe_dev->hw_info->vfe_ops.irq_ops.process_eof_irq) {
 		vfe_dev->hw_info->vfe_ops.irq_ops.process_eof_irq(vfe_dev,
 			irq_status0);

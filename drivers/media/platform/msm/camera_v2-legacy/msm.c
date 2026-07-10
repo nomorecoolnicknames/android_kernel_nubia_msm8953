@@ -344,53 +344,6 @@ static const char *msm_camera_status_name(unsigned int status)
 	}
 }
 
-static bool msm_camera_should_dump_event(unsigned int ioctl_cmd,
-	const struct msm_v4l2_event_data *event_data)
-{
-	if (!event_data)
-		return false;
-
-	if (event_data->command == MSM_CAMERA_PRIV_STREAM_ON ||
-		event_data->command == MSM_CAMERA_PRIV_STREAM_OFF)
-		return true;
-
-	if (ioctl_cmd == MSM_CAM_V4L2_IOCTL_CMD_ACK &&
-		event_data->status > MSM_CAMERA_ERR_EVT_BASE)
-		return true;
-
-	return false;
-}
-
-static void msm_camera_dump_event_words(const char *where, unsigned int ioctl_cmd,
-	const struct v4l2_event *event,
-	const struct msm_v4l2_event_data *event_data)
-{
-	const unsigned int *word = (const unsigned int *)event_data;
-	unsigned int event_type = event ? event->type : 0;
-	unsigned int event_id = event ? event->id : 0;
-
-	if (!msm_camera_should_dump_event(ioctl_cmd, event_data))
-		return;
-
-	pr_err("NX549J camera diag: raw_event %s ioctl=%s/0x%x event_type=0x%x event_id=%u/%s data_evt_type=0x%x data_evt_id=%u/%s cmd=%u/%s session=%u stream=%u status=0x%x/%s arg=%d ret=%u notify=%u handle=%u map_op=%u map_idx=%u\n",
-		where, msm_camera_ioctl_name(ioctl_cmd), ioctl_cmd,
-		event_type, event_id, msm_camera_event_name(event_id),
-		event_data->v4l2_event_type, event_data->v4l2_event_id,
-		msm_camera_event_name(event_data->v4l2_event_id),
-		event_data->command,
-		msm_camera_priv_command_name(event_data->command),
-		event_data->session_id, event_data->stream_id,
-		event_data->status, msm_camera_status_name(event_data->status),
-		(int)event_data->arg_value, event_data->ret_value,
-		event_data->notify, event_data->handle,
-		event_data->map_op, event_data->map_buf_idx);
-	pr_err("NX549J camera diag: raw_event %s words=%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x\n",
-		where, word[0], word[1], word[2], word[3],
-		word[4], word[5], word[6], word[7],
-		word[8], word[9], word[10], word[11],
-		word[12], word[13], word[14], word[15]);
-}
-
 static inline void msm_pm_qos_add_request(void)
 {
 	pr_info("%s: add request\n", __func__);
@@ -913,15 +866,6 @@ static long msm_private_ioctl(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	pr_err("NX549J camera diag: msm_private_ioctl %s cmd=0x%x session=%u stream=%u evt_type=0x%x evt_id=%u evt_cmd=%u status=0x%x ret=%u notify=%u\n",
-		msm_camera_ioctl_name(cmd), cmd, event_data->session_id,
-		event_data->stream_id, event_data->v4l2_event_type,
-		event_data->v4l2_event_id, event_data->command,
-		event_data->status, event_data->ret_value,
-		event_data->notify);
-	msm_camera_dump_event_words("private_ioctl_in", cmd, NULL,
-		event_data);
-
 	switch (cmd) {
 	case MSM_CAM_V4L2_IOCTL_NOTIFY:
 	case MSM_CAM_V4L2_IOCTL_CMD_ACK:
@@ -991,16 +935,18 @@ static long msm_private_ioctl(struct file *file, void *fh,
 		memcpy(&event.u.data, event_data,
 			sizeof(struct msm_v4l2_event_data));
 		memcpy(&ret_cmd->event, &event, sizeof(struct v4l2_event));
-		pr_err("NX549J camera diag: CMD_ACK enqueue session=%u stream=%u event=%s type=0x%x id=%u status=0x%x ret=%u\n",
-			session_id, stream_id,
-			msm_camera_event_name(event.id), event.type, event.id,
-			event_data->status, event_data->ret_value);
-		msm_camera_dump_event_words("cmd_ack_enqueue", cmd, &event,
-			event_data);
 		msm_enqueue(&cmd_ack->command_q, &ret_cmd->list);
 		complete(&cmd_ack->wait_complete);
 		spin_unlock_irqrestore(&(session->command_ack_q.lock),
 		   spin_flags);
+		if (event_data->command == MSM_CAMERA_PRIV_STREAM_ON ||
+			event_data->command == MSM_CAMERA_PRIV_STREAM_OFF)
+			pr_info("NX549J camera ack: completed session=%u stream=%u event=%s cmd=%s status=%s ret=%u\n",
+				session_id, stream_id,
+				msm_camera_event_name(event.id),
+				msm_camera_priv_command_name(event_data->command),
+				msm_camera_status_name(event_data->status),
+				event_data->ret_value);
 	}
 		break;
 
@@ -1151,13 +1097,6 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	/*re-init wait_complete */
 	reinit_completion(&cmd_ack->wait_complete);
 
-	pr_err("NX549J camera diag: post_event %s type=0x%x id=%u cmd=%u session=%d stream=%d arg=%d timeout=%d\n",
-		msm_camera_event_name(event->id), event->type, event->id,
-		event_data->command, session_id, stream_id,
-		event_data->arg_value, timeout);
-	msm_camera_dump_event_words("post_event_request", 0, event,
-		event_data);
-
 	v4l2_event_queue(vdev, event);
 
 	if (timeout < 0) {
@@ -1197,13 +1136,6 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	}
 
 	event_data = (struct msm_v4l2_event_data *)cmd->event.u.data;
-	pr_err("NX549J camera diag: post_event ack %s type=0x%x id=%u cmd=%u session=%u stream=%u status=0x%x ret=%u\n",
-		msm_camera_event_name(cmd->event.id), cmd->event.type,
-		cmd->event.id, event_data->command, event_data->session_id,
-		event_data->stream_id, event_data->status,
-		event_data->ret_value);
-	msm_camera_dump_event_words("post_event_ack", 0, &cmd->event,
-		event_data);
 
 	/* compare cmd_ret and event */
 	if (WARN_ON(event->type != cmd->event.type) ||

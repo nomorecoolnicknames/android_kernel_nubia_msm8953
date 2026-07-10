@@ -420,7 +420,14 @@ static unsigned long msm_cpp_queue_buffer_info(struct cpp_device *cpp_dev,
 
 	list_for_each_entry_safe(buff, save, buff_head, entry) {
 		if (buff->map_info.buff_info.index == buffer_info->index) {
-			pr_err("error buffer index already queued\n");
+			pr_err("NX549J camera cppdiag: duplicate registration "
+				"session=%u stream=%u index=%u fd=%d native=%u "
+				"existing_fd=%d existing_phy=0x%lx\n",
+				buff_queue->session_id, buff_queue->stream_id,
+				buffer_info->index, buffer_info->fd,
+				buffer_info->native_buff,
+				buff->map_info.buff_info.fd,
+				(unsigned long)buff->map_info.phy_addr);
 			goto error;
 		}
 	}
@@ -438,13 +445,22 @@ static unsigned long msm_cpp_queue_buffer_info(struct cpp_device *cpp_dev,
 				CAM_SMMU_MAP_RW, &buff->map_info.phy_addr,
 				(size_t *)&buff->map_info.len);
 	if (rc < 0) {
-		pr_err("ION mmap failed\n");
+		pr_err("NX549J camera cppdiag: ION map failed session=%u "
+			"stream=%u index=%u fd=%d native=%u rc=%d\n",
+			buff_queue->session_id, buff_queue->stream_id,
+			buffer_info->index, buffer_info->fd,
+			buffer_info->native_buff, rc);
 		kzfree(buff);
 		goto error;
 	}
 
 	INIT_LIST_HEAD(&buff->entry);
 	list_add_tail(&buff->entry, buff_head);
+	pr_err("NX549J camera cppdiag: registered session=%u stream=%u "
+		"index=%u fd=%d native=%u phy=0x%lx len=%lu\n",
+		buff_queue->session_id, buff_queue->stream_id,
+		buffer_info->index, buffer_info->fd, buffer_info->native_buff,
+		(unsigned long)buff->map_info.phy_addr, buff->map_info.len);
 
 	return buff->map_info.phy_addr;
 error:
@@ -3076,6 +3092,10 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 		}
 		k_stream_buff_info.num_buffs = u_stream_buff_info->num_buffs;
 		k_stream_buff_info.identity = u_stream_buff_info->identity;
+		pr_err("NX549J camera cppdiag: stream-buff ioctl cmd=0x%x "
+			"identity=0x%x num=%u len=%u compat=%u\n", cmd,
+			k_stream_buff_info.identity, k_stream_buff_info.num_buffs,
+			ioctl_ptr->len, is_compat_task() ? 1 : 0);
 
 		if (k_stream_buff_info.num_buffs > MSM_CAMERA_MAX_STREAM_BUF) {
 			pr_err("%s:%d: unexpected large num buff requested\n",
@@ -3910,6 +3930,10 @@ static long msm_cpp_subdev_fops_compat_ioctl(struct file *file,
 			&u32_cpp_buff_info->num_buffs);
 		get_user(p, &u32_cpp_buff_info->buffer_info);
 		k_cpp_buff_info.buffer_info = compat_ptr(p);
+		pr_err("NX549J camera cppdiag: compat stream-buff cmd=0x%x "
+			"identity=0x%x num=%u ptr=0x%x len=%u\n", cmd,
+			k_cpp_buff_info.identity, k_cpp_buff_info.num_buffs,
+			p, kp_ioctl.len);
 
 		kp_ioctl.ioctl_ptr = (void *)&k_cpp_buff_info;
 		if (is_compat_task()) {

@@ -386,17 +386,6 @@ static void msm_vfe40_process_input_irq(struct vfe_device *vfe_dev,
 		return;
 
 	if (irq_status0 & (1 << 0)) {
-		/*
-		 * NX549J camera bring-up diagnostic (VFE40 is the real msm8953
-		 * VFE — the earlier isp46 marker was dead code): prove whether
-		 * PIX SOF keeps firing after the first frame. Preview freezes
-		 * at buf_done seq=1 while the daemon keeps sending per-frame
-		 * AEC i2c writes, suggesting SOFs continue but WM-done stops.
-		 */
-		pr_err_ratelimited("NX549J camera vfe40diag: SOF vfe=%d frame_id=%u status0=0x%x\n",
-			vfe_dev->pdev->id,
-			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id,
-			irq_status0);
 		ISP_DBG("%s: SOF IRQ\n", __func__);
 		msm_isp_increment_frame_id(vfe_dev, VFE_PIX_0, ts);
 	}
@@ -635,10 +624,6 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 		return;
 	/* Shift status bits so that PIX REG UPDATE is 1st bit */
 	shift_irq = ((irq_status0 & 0xF0) >> 4);
-	/* NX549J camera bring-up diagnostic: reg_update ACK per frame_src. */
-	pr_err_ratelimited("NX549J camera vfe40diag: reg_update_ack vfe=%d shift_irq=0x%x frame_id=%u\n",
-		vfe_dev->pdev->id, shift_irq,
-		vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
 
 	for (i = VFE_PIX_0; i <= VFE_RAW_2; i++) {
 		if (shift_irq & BIT(i)) {
@@ -2386,4 +2371,3 @@ module_init(msm_vfe40_init_module);
 module_exit(msm_vfe40_exit_module);
 MODULE_DESCRIPTION("MSM VFE40 driver");
 MODULE_LICENSE("GPL v2");
-

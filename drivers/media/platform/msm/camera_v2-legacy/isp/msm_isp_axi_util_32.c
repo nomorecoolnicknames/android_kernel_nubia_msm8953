@@ -44,21 +44,7 @@ int msm_isp_axi_create_stream(
 	spin_lock_init(&axi_data->stream_info[i].lock);
 	axi_data->stream_info[i].session_id = stream_cfg_cmd->session_id;
 	axi_data->stream_info[i].stream_id = stream_cfg_cmd->stream_id;
-	/*
-	 * NX549J PROPER-FIX (black preview root, CONFIG path, 32-bit
-	 * mirror of msm_isp_axi_util.c::msm_isp_axi_create_stream): the
-	 * daemon requests buf_divert=1 for the live preview (src=1
-	 * PIX_VIEWFINDER). Forcing divert=0 makes VFE write the gralloc
-	 * display buffer directly; without it CPP's get_phy_addr fails
-	 * (native_buff=0) -> black preview. Rollback: revert this hunk.
-	 */
-	if (i == PIX_VIEWFINDER) {
-		axi_data->stream_info[i].buf_divert = 0;
-		pr_err_ratelimited("NX549J: cfg-stream(32) zero buf_divert for PIX_VIEWFINDER preview src=%d handle=0x%x (PROPER-FIX)\n",
-			i, stream_cfg_cmd->axi_stream_handle);
-	} else {
-		axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
-	}
+	axi_data->stream_info[i].buf_divert = stream_cfg_cmd->buf_divert;
 	axi_data->stream_info[i].state = INACTIVE;
 	axi_data->stream_info[i].stream_handle =
 		stream_cfg_cmd->axi_stream_handle;

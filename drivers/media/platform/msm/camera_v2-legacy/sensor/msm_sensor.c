@@ -24,44 +24,6 @@
 static struct msm_camera_i2c_fn_t msm_sensor_cci_func_tbl;
 static struct msm_camera_i2c_fn_t msm_sensor_secure_func_tbl;
 
-static void nx549j_sensor_dump_i2c_array(const char *where,
-	const char *sensor_name, int cfgtype,
-	const struct msm_camera_i2c_reg_setting *setting)
-{
-	const struct msm_camera_i2c_reg_array *regs;
-	uint32_t dump_count;
-	uint32_t idx;
-
-	if (!setting) {
-		pr_err("NX549J camera sensor_i2c: %s sensor=%s cfgtype=%d null setting\n",
-			where, sensor_name ? sensor_name : "unknown", cfgtype);
-		return;
-	}
-
-	regs = setting->reg_setting;
-	pr_err("NX549J camera sensor_i2c: %s sensor=%s cfgtype=%d size=%u addr_type=%u data_type=%u delay=%u regs=%pK\n",
-		where, sensor_name ? sensor_name : "unknown", cfgtype,
-		setting->size, setting->addr_type, setting->data_type,
-		setting->delay, regs);
-
-	if (!regs || !setting->size)
-		return;
-
-	dump_count = setting->size < 4 ? setting->size : 4;
-	for (idx = 0; idx < dump_count; idx++) {
-		pr_err("NX549J camera sensor_i2c: %s first[%u] addr=0x%x data=0x%x delay=%u\n",
-			where, idx, regs[idx].reg_addr, regs[idx].reg_data,
-			regs[idx].delay);
-	}
-
-	if (setting->size > dump_count) {
-		idx = setting->size - 1;
-		pr_err("NX549J camera sensor_i2c: %s last[%u] addr=0x%x data=0x%x delay=%u\n",
-			where, idx, regs[idx].reg_addr, regs[idx].reg_data,
-			regs[idx].delay);
-	}
-}
-
 static void msm_sensor_adjust_mclk(struct msm_camera_power_ctrl_t *ctrl)
 {
 	int idx;
@@ -477,8 +439,6 @@ static long msm_sensor_subdev_do_ioctl(
 	if (cmd == NX549J_STOCK_VIDIOC_MSM_SENSOR_CFG32) {
 		memset(&sensor_cfg_data, 0, sizeof(sensor_cfg_data));
 		sensor_cfg_data.cfgtype = stock32->cfgtype;
-		pr_err("NX549J camera diag: stock sensor cfg32 alias cmd=0x%x cfgtype=%d\n",
-			cmd, stock32->cfgtype);
 		switch (stock32->cfgtype) {
 		case CFG_GET_SENSOR_INFO:
 			break;
@@ -494,8 +454,6 @@ static long msm_sensor_subdev_do_ioctl(
 		}
 		rc = msm_sensor_subdev_ioctl(sd, VIDIOC_MSM_SENSOR_CFG,
 			&sensor_cfg_data);
-		pr_err("NX549J camera diag: stock sensor cfg32 done cfgtype=%d rc=%ld\n",
-			stock32->cfgtype, rc);
 		if (rc < 0)
 			return rc;
 		switch (stock32->cfgtype) {
@@ -542,9 +500,6 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	CDBG("%s:%d %s cfgtype = %d\n", __func__, __LINE__,
 		s_ctrl->sensordata->sensor_name, cdata->cfgtype);
-	pr_err("NX549J camera diag: sensor_config32 sensor=%s cfgtype=%d state=%d setting=0x%lx\n",
-		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
-		s_ctrl->sensor_state, (unsigned long)cdata->cfg.setting);
 	switch (cdata->cfgtype) {
 	case CFG_GET_SENSOR_INFO:
 		memcpy(cdata->cfg.sensor_info.sensor_name,
@@ -651,9 +606,6 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		}
 
 		conf_array.reg_setting = reg_setting;
-		nx549j_sensor_dump_i2c_array("write32",
-			s_ctrl->sensordata->sensor_name,
-			cdata->cfgtype, &conf_array);
 
 		if (CFG_WRITE_I2C_ARRAY == cdata->cfgtype)
 			rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
@@ -1042,9 +994,6 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 			rc = -EFAULT;
 			break;
 		}
-		nx549j_sensor_dump_i2c_array("stop32",
-			s_ctrl->sensordata->sensor_name,
-			cdata->cfgtype, stop_setting);
 		break;
 	}
 
@@ -1088,9 +1037,6 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	}
 
 DONE:
-	pr_err("NX549J camera diag: sensor_config32 done sensor=%s cfgtype=%d state=%d rc=%d\n",
-		s_ctrl->sensordata->sensor_name, cdata->cfgtype,
-		s_ctrl->sensor_state, rc);
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 
 	return rc;
