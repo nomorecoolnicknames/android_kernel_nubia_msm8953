@@ -8476,3 +8476,95 @@ Final packaged artifact for this batch:
   restore the archived original blob if the patched wait exceeds one second,
   deadlocks, changes Build ID/size, or turns a real `init_config_done=-1`
   failure into success. Never relax the `>0` branch.
+
+## 2026-07-10 kernel #269 non-camera runtime inventory
+
+Patch category: `DIAGNOSTIC / STATE`. This is a capture-backed inventory, not
+a claim that every listed interface has passed physical testing.
+
+### Confirmed working in the current captures
+
+- Synaptics touch registers against the 1080x1920 display and framework input
+  events are present in the cycle-15 boot/runtime logs. Late-runtime stability
+  is still a separate unverified item.
+- Wi-Fi reaches `VALIDATED` with active Internet connectivity.
+- Bluetooth registers HCI, obtains its controller address, and reaches adapter
+  state `ON`; pairing and audio profiles were not exercised.
+- Modem/QCRIL comes online and registers both `IRadio@1.1` and UIM services.
+- Audio HAL/AudioFlinger load, and the deep-buffer speaker path starts and
+  writes frames. Physical speaker output had also been user-confirmed earlier.
+- The ZTEMT battery profile and charger load; USB charging/full states are
+  reported normally before the later physical cable disconnect.
+- NFC's digital chain is alive: BCM2079x probes, firmware 1206.2 authenticates,
+  the HAL reaches READY, NFA enables polling `0x2f`, and `RF_DISCOVER` returns
+  OK. No deliberate physical tag activation was captured.
+
+Primary evidence is
+`captures/cycle15-ack-complete-k269/nx549j-k269-boot-pre-camera.log` and
+`captures/cycle15-ack-complete-k269/nx549j-opencamera-k269-cycle15.log`.
+
+### Current release blockers or explicit failures
+
+- Fingerprint is not functional in the current image. The rejected C4
+  VNDK-v28 `LD_LIBRARY_PATH` experiment makes `gx_fpd` miss
+  `checkCallingPermission` and `fps_hal` miss `sp_report_stack_pointer`.
+  Removing C4 alone is insufficient because the direct Android-11 binder path
+  previously stack-smashed; the proven A9 closure must remain process-scoped.
+  The separate four-byte `gxfingerprint.default.so` NULL-input correction
+  (SHA-256 `a629b983...23551fc`) was live-verified on 2026-07-09 to make reset
+  command 2 reach the TA, but it did not close the remaining teardown race.
+- Proximity reports `prox init failed` and later fails enable with
+  `Operation not permitted`; ALS also reports `rgb init failed` at startup.
+- GNSS registers its service but reports `locAPIEnable failed`, a null GNSS
+  interface, failed QMI LOC requests, and failed `injectTime`; no fix exists in
+  the current capture.
+- Deep suspend is deliberately disabled by
+  `lpm_levels.sleep_disabled=1`. SystemSuspend also misses `/sys/class/wakeup`
+  and suspend-stat nodes, so power behavior is not release-ready.
+- The cycle-15 camera runtime log contains 26924 matches for SDM allocation,
+  session-buffer, or layer-stack commit failures, beginning with
+  `HWCBufferAllocator::AllocateBuffer: Failed to allocate memory`, even though
+  UI and camera preview remain visible. This is a separate display-memory/SDM
+  blocker and must not be hidden by the camera success.
+- Known hardware/runtime debt remains: in-call uplink mic is unproven/broken
+  on the active call route, the earpiece is physically dead, and RGB LED is
+  red-only with missing channels redirected to `/dev/null` by the current
+  Light HAL.
+
+### Not yet verified on #269
+
+Motion-sensor samples, media microphone, headset, audio pop regression,
+Bluetooth pairing/A2DP/HFP, outdoor GNSS fix, calls/SMS/data/IMS with a SIM,
+real suspend/resume, charging rate, hall/DT2W/FM/ANT/vibrator/torch, NFC tag
+activation, and 30-60 minute touch stability remain unverified.
+
+### Next coherent live cycle after USB returns
+
+1. Install and cold-test the camera sensor predicate blob at delay zero, then
+   run rear/front/photo/video and five full reopen/app-switch cycles while
+   collecting HWC/dma-buf/memory counters.
+2. Run a 30-60 minute input/sensor/screen-off loop covering touch, proximity,
+   ALS/rotation, and ten display sleep/wake cycles; preserve logs immediately
+   if touch regresses late.
+3. Sweep a known NFC-A/Type-2 tag while recording the NFC IRQ counter and
+   `NFA_ACTIVATED_EVT`; then perform outdoor GNSS and Bluetooth peer tests.
+   SIM call/uplink routing remains a separate test requiring a working SIM.
+
+## A-only Treble / ARM64 boundary
+
+- Current build is ARM64 bi-arch, not arm64-only: ARM64 is primary, ARM is the
+  secondary ABI, and runtime uses `zygote64_32`.
+- Physical layout is already A-only and maps `oem` as `/vendor`. An opt-in
+  A-only GSI fstab exists, but it is not the proven default boot profile.
+- Treble groundwork exists (separate vendor image, VINTF, Treble property,
+  VNDK 30), but `BOARD_VNDK_RUNTIME_DISABLE=true` leaves the runtime in
+  VNDK-lite mode.
+- The vendor tree contains both ELF32 and ELF64 components; the camera HAL,
+  interface, daemon, and sensor modules are intentionally 32-bit. Strict
+  A-only Treble can retain that process-isolated 32-bit vendor island.
+  Removing all 32-bit userspace support would break the current camera and
+  many other proprietary HALs and requires replacement blobs or a rewrite.
+- Therefore the safe release target is ARM64-primary strict A-only Treble with
+  isolated ARM32 vendor compatibility. Make the opt-in profile default only
+  after Lineage and ARM64 A-only GSI boot, VNDK/linker/VINTF/VTS checks, and a
+  complete camera/system regression pass.
