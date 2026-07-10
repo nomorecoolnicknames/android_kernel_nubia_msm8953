@@ -8458,6 +8458,15 @@ Final packaged artifact for this batch:
   last verified live `/vendor/lib/libmmcamera2_sensor_modules.so` therefore
   remains the original SHA-256 `174c5e1a...52de9`. The delay property was
   restored to `2200` before USB loss.
+- Host USB boundary:
+  container-host `dmesg --ctime` identifies the phone as USB port `1-5`,
+  product `Nubia Z11 mini S`, serial `30785d1a`. The last event is
+  `[Fri Jul 10 15:27:26 2026] usb 1-5: USB disconnect, device number 92`;
+  repeated later `lsusb` and ADB checks contain no NX549J enumeration. The
+  exact excerpt is archived in
+  `captures/cycle17-sensor-init-predicate/HOST_USB_BOUNDARY_20260710.md`.
+  This proves a physical host-USB boundary rather than Android `offline` and
+  does not change the blob's not-deployed status.
 - Expected next marker:
   with the patched blob and delay `0`, stream 2 must block until
   `init_config_done` is signalled, then return `CMD_SUCCESS`; sensor
