@@ -8568,3 +8568,37 @@ activation, and 30-60 minute touch stability remain unverified.
   isolated ARM32 vendor compatibility. Make the opt-in profile default only
   after Lineage and ARM64 A-only GSI boot, VNDK/linker/VINTF/VTS checks, and a
   complete camera/system regression pass.
+
+### 2026-07-13 offline first-stage preparation
+
+- Patch category: PROPER-FIX candidate for the camera HAL mapping gate, plus
+  read-only tooling. No device, image, partition, or live vendor file was
+  modified in this stage.
+- FACT: commit `dec77316c4e771a39348eb6528ac7bdeb1130e8e` already preserves the
+  sensor-init predicate correction in the extraction path. The packaged blob
+  hashes to `ad29a1ac3f87eebbfba0a5a35b47156d09703a15b4854d95ec70e9416ccfce5e`;
+  the last live-device hash remains the unpatched artifact recorded by
+  `captures/cycle17-sensor-init-predicate/README.md`.
+- FACT: source inspection of `mm_stream_streamon()` found it waited for at most
+  one pending in-kernel buffer map, then continued even when other required
+  buffers remained pending. The candidate source fix now rechecks the complete
+  map set after every condvar wake, aborts on any failed map, and retains one
+  absolute `WAIT_TIMEOUT` deadline. It does not change the independent
+  one-shot 2200 ms bring-up delay below the mapping gate.
+- FACT: `device/nubia/nx549j/tools/audit_strict_vndk.py` and
+  `tools/validate_gsi_candidate_dossier.py` were added with regression tests.
+  The static audit passes against the current source tree and explicitly
+  reports its non-runtime limits: non-SAR first-stage behavior, mount/linker,
+  SELinux, recovery/data encryption, VINTF, Binder and boot status remain
+  device gates.
+- INFERENCE: waiting for every required buffer map removes the documented
+  userspace race where `STREAM_ON` precedes mapping. It is not a camera runtime
+  fix until an artifact built from this source is hash-identified and tested.
+- Expected next marker: with the sensor predicate blob deployed and delay zero,
+  camera logs must show no pending or failed buffer maps at stream-on before
+  rear/front cold opens and five close/reopen cycles. A timeout or map failure
+  rejects this candidate and preserves the logs for the next diagnosis.
+- Rollback condition: any boot, camera-open, latency, or mapping regression
+  against the exact built vendor artifact reverts the mapping-gate source
+  change; the pre-existing sensor predicate commit remains independently
+  testable.
