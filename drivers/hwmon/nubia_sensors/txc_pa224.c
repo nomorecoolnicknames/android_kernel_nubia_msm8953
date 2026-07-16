@@ -235,6 +235,7 @@ static int pa224_read_file(char *filename, u8* param)
 {
 	struct file  *fop;
 	mm_segment_t old_fs;
+	ssize_t nread;
 
 	fop = filp_open(filename, O_RDONLY, 0444);
 	if (IS_ERR(fop)) {
@@ -245,12 +246,21 @@ static int pa224_read_file(char *filename, u8* param)
 	old_fs = get_fs();
 	set_fs(get_ds()); //set_fs(KERNEL_DS);
 
-	fop->f_op->llseek(fop, 0, 0);
-	fop->f_op->read(fop, param, strlen(param), &fop->f_pos);
+	/* On 4.9 ext4 provides only ->read_iter, f_op->read is NULL; calling
+	 * it directly jumps to address 0 and panics the kernel. vfs_read()
+	 * dispatches correctly. Read exactly 2 bytes: param is u8[2] and not
+	 * NUL-terminated, so the old strlen(param) count could overrun it. */
+	fop->f_pos = 0;
+	nread = vfs_read(fop, (char __user *)param, 2, &fop->f_pos);
 
 	set_fs(old_fs);
 
 	filp_close(fop, NULL);
+
+	if (nread < 2) {
+		SENSOR_LOG_INFO("cal file short read %zd, using defaults\n", nread);
+		return -ERR_FILE_OPS;
+	}
 
 	return 0;
 }
@@ -259,6 +269,7 @@ static ssize_t pa224_write_file(char *filename, u8* param, int count)
 {
 	struct file  *fop;
 	mm_segment_t old_fs;
+	ssize_t nwritten;
 
 	fop = filp_open(filename, O_CREAT | O_RDWR | O_TRUNC, 0666);
 	if (IS_ERR(fop)) {
@@ -268,10 +279,17 @@ static ssize_t pa224_write_file(char *filename, u8* param, int count)
 
 	old_fs = get_fs();
 	set_fs(get_ds()); //set_fs(KERNEL_DS);
-	fop->f_op->write(fop, (char *)param, count, &fop->f_pos);
+	/* f_op->write is NULL on 4.9 ext4 (->write_iter only), see
+	 * pa224_read_file: direct call panics, vfs_write() dispatches. */
+	nwritten = vfs_write(fop, (const char __user *)param, count, &fop->f_pos);
 	set_fs(old_fs);
 
 	filp_close(fop, NULL);
+
+	if (nwritten < count) {
+		SENSOR_LOG_INFO("cal file short write %zd of %d\n", nwritten, count);
+		return -ERR_FILE_OPS;
+	}
 	SENSOR_LOG_INFO("save PS calibration file Success!!");
 	return 0;
 }
