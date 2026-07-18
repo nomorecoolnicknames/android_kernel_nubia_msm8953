@@ -141,6 +141,19 @@
 	/delete-property/ qcom,msm-vdd-wsa-switch-voltage;
 	/delete-property/ qcom,msm-vdd-wsa-switch-current;
 
+	/* NX549J mic fix (Half 2): the built-in mics are DIGITAL (DMIC1 primary,
+	 * DMIC2 secondary) on gpio89/90. The tissot-donor 4.9 port never muxed
+	 * those pins to the dmic function (live pinmux-pins showed gpio89/90
+	 * "MUX UNCLAIMED"), and msm8952.c has no qcom,cdc-dmic-gpios parsing, so
+	 * DEC1 MUX=DMIC1 in mixer_paths clocked nothing (CLK_DMIC_B1_CTL bit0=0,
+	 * dead mic in recording AND in-call). Claim the dmic0 clk/data pinctrl
+	 * directly on this sound platform device; the driver core selects the
+	 * "default" state at probe, muxing gpio89 -> dmic0_clk, gpio90 ->
+	 * dmic0_data (matches the stock NX549J config). Pair with the
+	 * mixer_paths_mtp.xml DEC1/DEC2 MUX=DMIC1/DMIC2 record paths. */
+	pinctrl-names = "default";
+	pinctrl-0 = <&cdc_dmic0_clk_act &cdc_dmic0_data_act>;
+
 	qcom,cdc-ext-amp-gpios = <&tlmm 25 0>;
 	qcom,msm-hs-micbias-type = "external";
 
