@@ -241,6 +241,11 @@ static void nx549j_isp_diag_request(const char *tag,
 			stream_cfg_cmd->plane_cfg[i].rdi_cid);
 }
 
+/* NX549J: forward decl so create_stream can reclaim a stale stream's write
+ * masters (msm_isp_axi_free_wm is defined later in this file). */
+void msm_isp_axi_free_wm(struct msm_vfe_axi_shared_data *axi_data,
+	struct msm_vfe_axi_stream *stream_info);
+
 int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
@@ -254,10 +259,32 @@ int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	}
 
 	if (axi_data->stream_info[i].state != AVAILABLE) {
-		pr_err("%s:%d invalid state %d expected %d for src %d\n",
-			__func__, __LINE__, axi_data->stream_info[i].state,
-			AVAILABLE, i);
-		return -EINVAL;
+		/* NX549J: reclaim a stale SAME-IDENTITY, quiesced stream instead of
+		 * failing. A half-completed teardown (e.g. GCam's RAW10 ZSL stream) can
+		 * leave stream_info[i] non-AVAILABLE; the stock -EINVAL then cascades into
+		 * a daemon SIGSEGV and every later stream configuration fails
+		 * ("ISP resource is already allocated"), wedging the camera until reboot.
+		 * If the leaked slot is the SAME logical stream (session+stream id) now
+		 * being recreated and it is already quiesced (INACTIVE), free its write
+		 * masters and fall through to re-create (the memset below re-inits it).
+		 * Anything still active or of a different identity keeps the stock -EINVAL
+		 * -- never tear down a live or foreign stream. */
+		if (axi_data->stream_info[i].state == INACTIVE &&
+			axi_data->stream_info[i].session_id ==
+				stream_cfg_cmd->session_id &&
+			axi_data->stream_info[i].stream_id ==
+				stream_cfg_cmd->stream_id) {
+			pr_err("%s:%d NX549J: reclaiming stale INACTIVE stream src %d session %d stream %d\n",
+				__func__, __LINE__, i,
+				stream_cfg_cmd->session_id,
+				stream_cfg_cmd->stream_id);
+			msm_isp_axi_free_wm(axi_data, &axi_data->stream_info[i]);
+		} else {
+			pr_err("%s:%d invalid state %d expected %d for src %d\n",
+				__func__, __LINE__, axi_data->stream_info[i].state,
+				AVAILABLE, i);
+			return -EINVAL;
+		}
 	}
 
 	if ((axi_data->stream_handle_cnt << 8) == 0)
