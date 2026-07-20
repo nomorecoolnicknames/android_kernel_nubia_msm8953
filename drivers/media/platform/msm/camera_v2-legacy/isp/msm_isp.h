@@ -58,8 +58,19 @@
 #define VFE_CLK_INFO_MAX 16
 #define STATS_COMP_BIT_MASK 0x1FF
 
-#define MSM_ISP_MIN_AB 100000000
-#define MSM_ISP_MIN_IB 100000000
+/*
+ * NX549J: bus-vote headroom restored to the stock nubia kernel values
+ * (ZTEMT "li.bin223 modify for enlarge bandwidth", stock msm_isp.h:63-64).
+ * The generic 100M/100M (and the 12M/12M hw_info mins the vote actually
+ * used) leave the VFE write masters without instantaneous-bandwidth slack;
+ * at the top sensor mode (5488x4112 RAW10+YUV concurrent, dual-VFE) DDR
+ * latency spikes then overrun the WM FIFOs -> bus overflow -> ping-pong
+ * mismatch recovery tears down the capture. 13/16MP fit inside the small
+ * vote; only the 22.6MP mode crosses it - exactly the observed threshold.
+ * Voted only while camera streams are active, same as stock.
+ */
+#define MSM_ISP_MIN_AB 450000000
+#define MSM_ISP_MIN_IB 900000000
 #define MAX_BUFFERS_IN_HW 2
 
 #define MAX_VFE 2

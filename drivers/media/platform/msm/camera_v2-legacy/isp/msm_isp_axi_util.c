@@ -2686,9 +2686,16 @@ int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev,
 
 	total_bandwidth = total_pix_bandwidth + total_rdi_bandwidth +
 			total_fe_bandwidth;
+		/*
+		 * NX549J: vote with the stock ZTEMT headroom macros
+		 * (ab +450M / ib +900M, "modify for enlarge bandwidth"),
+		 * not the generic 12M hw_info mins - see MSM_ISP_MIN_AB in
+		 * msm_isp.h for the full rationale. This mirrors the stock
+		 * nubia msm_isp_update_stream_bandwidth() vote verbatim.
+		 */
 		rc = msm_isp_update_bandwidth(ISP_VFE0 + vfe_dev->pdev->id,
-			(total_bandwidth + vfe_dev->hw_info->min_ab),
-			(total_bandwidth + vfe_dev->hw_info->min_ib));
+			(total_bandwidth + MSM_ISP_MIN_AB),
+			(total_bandwidth + MSM_ISP_MIN_IB));
 	if (rc < 0)
 		pr_err("%s: update failed\n", __func__);
 
@@ -2936,6 +2943,18 @@ int msm_isp_axi_restart(struct vfe_device *vfe_dev,
 
 	vfe_dev->buf_mgr->frameId_mismatch_recovery = 0;
 
+	/*
+	 * Recovery completeness: stale dual-VFE shared-buffer put_buf_mask
+	 * survives halt/reset (only bufq creation ever cleared it), so the
+	 * first done-IRQ after restart re-raised PING_PONG_MISMATCH without
+	 * any new hardware desync and recovery spiralled until the session
+	 * died (observed on 22.6MP dual-VFE capture: vfe1 "Uncleared
+	 * put_buf_mask ... buf_idx -1" -> recovery_count 1..3 -> wedge).
+	 * The pingpong state is fully re-initialized below, so the pre-halt
+	 * bookkeeping is stale by definition: clear it. Runs once per VFE,
+	 * idempotent, after both VFEs' resets have flushed their buffers.
+	 */
+	msm_isp_reset_put_buf_mask(vfe_dev->buf_mgr);
 
 	for (i = 0, j = 0; j < axi_data->num_active_stream &&
 		i < VFE_AXI_SRC_MAX; i++, j++) {
@@ -3225,6 +3244,18 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 
 	if (stream_cfg_cmd->num_streams > MAX_NUM_STREAM)
 		return -EINVAL;
+
+	/*
+	 * A stream start is a clean boundary: refresh the ping-pong mismatch
+	 * recovery budget. recovery_count is otherwise never decremented, so
+	 * occasional dual-VFE boundary races would accumulate across a long
+	 * session (camera stays open) up to MAX_RECOVERY_THRESHOLD and
+	 * hard-kill the camera ("exiting camera!"). The recovery ioctls
+	 * (halt/reset/restart) do not come through here, so a genuine
+	 * relapse spiral within one incident is still capped at the
+	 * threshold.
+	 */
+	vfe_dev->axi_data.recovery_count = 0;
 
 	pr_err("NX549J camera ispdiag: start_axi enter vfe=%d num=%u camif_update=%d camif_state=%d active_streams=%u\n",
 		vfe_dev->pdev->id, stream_cfg_cmd->num_streams,

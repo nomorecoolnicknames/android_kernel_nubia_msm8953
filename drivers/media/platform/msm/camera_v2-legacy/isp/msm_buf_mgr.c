@@ -1299,6 +1299,39 @@ static int msm_isp_deinit_isp_buf_mgr(
 	return 0;
 }
 
+/*
+ * msm_isp_reset_put_buf_mask - clear dual-VFE shared-buffer put accounting
+ *
+ * put_buf_mask tracks which VFE has signalled write-done for each ping/pong
+ * slot of an ISP_SHARE_BUF queue. It is only ever zeroed when the bufq is
+ * created, so a half-set mask left behind by an error halt survives the
+ * AXI halt/reset/restart recovery: the first done-IRQ after restart then
+ * hits -ENOTEMPTY ("Uncleared put_buf_mask") and re-raises
+ * ISP_EVENT_PING_PONG_MISMATCH with no new hardware desync, spiralling
+ * recovery_count up to MAX_RECOVERY_THRESHOLD and killing the session.
+ * After the hardware pingpong state has been re-initialized the pre-halt
+ * bookkeeping is by definition stale; recovery must clear it.
+ */
+void msm_isp_reset_put_buf_mask(struct msm_isp_buf_mgr *buf_mgr)
+{
+	struct msm_isp_bufq *bufq = NULL;
+	unsigned long flags;
+	int i, j;
+
+	if (!buf_mgr)
+		return;
+
+	for (i = 0; i < buf_mgr->num_buf_q; i++) {
+		bufq = &buf_mgr->bufq[i];
+		if (!bufq->bufq_handle)
+			continue;
+		spin_lock_irqsave(&bufq->bufq_lock, flags);
+		for (j = 0; j < ISP_NUM_BUF_MASK; j++)
+			bufq->put_buf_mask[j] = 0;
+		spin_unlock_irqrestore(&bufq->bufq_lock, flags);
+	}
+}
+
 int msm_isp_proc_buf_cmd(struct msm_isp_buf_mgr *buf_mgr,
 	unsigned int cmd, void *arg)
 {

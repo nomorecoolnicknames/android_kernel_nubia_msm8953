@@ -216,6 +216,8 @@ int msm_isp_create_isp_buf_mgr(struct msm_isp_buf_mgr *buf_mgr,
 int msm_isp_proc_buf_cmd(struct msm_isp_buf_mgr *buf_mgr,
 	unsigned int cmd, void *arg);
 
+void msm_isp_reset_put_buf_mask(struct msm_isp_buf_mgr *buf_mgr);
+
 int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 	void *arg);
 
